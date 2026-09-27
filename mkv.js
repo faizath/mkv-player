@@ -12481,8 +12481,11 @@ var mkvjs = (() => {
   // src/browser/index.js
   var browser_exports = {};
   __export(browser_exports, {
+    MKVPlayer: () => MKVPlayer,
     MSEPlayer: () => MSEPlayer,
+    attachSubtitleTracks: () => attachSubtitleTracks,
     createExtractorUI: () => createExtractorUI,
+    createPlayer: () => createPlayer,
     demux: () => demuxer_default,
     extractAttachments: () => attachments_default,
     extractCues: () => extractCues,
@@ -13414,6 +13417,224 @@ var mkvjs = (() => {
     const config = track.codecPrivate instanceof Uint8Array ? track.codecPrivate : new Uint8Array(track.codecPrivate || []);
     const objectType = config.length ? config[0] >> 3 : 2;
     return `mp4a.40.${objectType}`;
+  }
+
+  // ../srt2vtt.js/dist/chunk-IMOAXEAO.js
+  var TIMESTAMP = /^\s*(?:(\d+):)?(\d{2}):(\d{2})(?:[,.](\d{1,3}))?\s*-->\s*(?:(\d+):)?(\d{2}):(\d{2})(?:[,.](\d{1,3}))?(?:\s+.*)?$/;
+  var SAFE_TAG = /<\/?(?:b|i|u|ruby|rt|c(?:\.[\w-]+)*|v(?:\s+[^<>]*)?|lang(?:\s+[^<>]*)?)>/gi;
+  function escapeText(text, sanitize, allowVttMarkup) {
+    if (!sanitize) return text;
+    if (allowVttMarkup) {
+      const tags = [];
+      const protectedText = text.replace(SAFE_TAG, (tag) => {
+        tags.push(tag);
+        return `\0${tags.length - 1}\0`;
+      });
+      return protectedText.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\u0000(\d+)\u0000/g, (_, index) => tags[index]);
+    }
+    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  function formatTimestamp2(match, start) {
+    const hours = start ? match[1] || "0" : match[5] || "0";
+    const minutes = start ? match[2] : match[6];
+    const seconds = start ? match[3] : match[7];
+    const milliseconds = start ? match[4] : match[8];
+    return `${hours.padStart(2, "0")}:${minutes}:${seconds}.${(milliseconds || "0").padEnd(3, "0")}`;
+  }
+  function parseCue(block, cueIndex, options) {
+    const lines = block.split("\n");
+    let line = 0;
+    let id = "";
+    if (!TIMESTAMP.test(lines[0] || "")) {
+      if (lines.length < 2 || !TIMESTAMP.test(lines[1])) {
+        return { error: "Missing or invalid timestamp" };
+      }
+      id = lines[0];
+      line = 1;
+    }
+    const timestamp = lines[line].match(TIMESTAMP);
+    if (!timestamp) return { error: "Missing or invalid timestamp" };
+    const output = [];
+    if (options.preserveCueIds && id) output.push(id);
+    output.push(`${formatTimestamp2(timestamp, true)} --> ${formatTimestamp2(timestamp, false)}`);
+    const text = lines.slice(line + 1).join("\n");
+    output.push(escapeText(text, options.sanitize, options.allowVttMarkup));
+    return { value: output.join("\n") };
+  }
+  function convert(srtString, options = {}) {
+    if (typeof srtString !== "string") {
+      throw new TypeError("srtString must be a string");
+    }
+    const settings = {
+      sanitize: options.sanitize !== false,
+      allowVttMarkup: options.allowVttMarkup === true,
+      strict: options.strict === true,
+      preserveCueIds: options.preserveCueIds !== false
+    };
+    const normalized = srtString.replace(/^\uFEFF/, "").replace(/\r\n?|\u2028|\u2029/g, "\n").trim();
+    const blocks = normalized ? normalized.split(/\n{2,}/) : [];
+    const errors = [];
+    const cues = [];
+    blocks.forEach((block, index) => {
+      if (/^WEBVTT(?:\s|$)/i.test(block)) return;
+      const parsed = parseCue(block, index, settings);
+      if (parsed.error) {
+        errors.push({ cueIndex: index, message: parsed.error });
+      } else {
+        cues.push(parsed.value);
+      }
+    });
+    const vtt = `WEBVTT
+
+${cues.length ? `${cues.join("\n\n")}
+
+` : ""}`;
+    return settings.strict ? { vtt, errors } : vtt;
+  }
+
+  // src/playback/subtitles.js
+  function cueTimestamp(milliseconds) {
+    const total = Math.max(0, milliseconds || 0);
+    const hours = Math.floor(total / 36e5);
+    const minutes = Math.floor(total % 36e5 / 6e4);
+    const seconds = Math.floor(total % 6e4 / 1e3);
+    const millis = Math.floor(total % 1e3);
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${String(millis).padStart(3, "0")}`;
+  }
+  function stripAssTags(text) {
+    return String(text || "").replace(/\{[^}]*\}/g, "").replace(/\\N/g, "\n").replace(/\\n/g, "\n").replace(/\\h/g, " ");
+  }
+  function cuesToSrt(cues) {
+    return cues.map((cue, index) => `${index + 1}
+${cueTimestamp(cue.startMs).replace(".", ",")} --> ${cueTimestamp(cue.endMs).replace(".", ",")}
+${cue.text || ""}`).join("\n\n");
+  }
+  function cuesToVtt(cues, format) {
+    if (format === "ass") {
+      return `WEBVTT
+
+${cues.map((cue) => `${cueTimestamp(cue.startMs)} --> ${cueTimestamp(cue.endMs)}
+${stripAssTags(cue.text)}`).join("\n\n")}
+
+`;
+    }
+    return convert(cuesToSrt(cues));
+  }
+  async function attachSubtitleTracks(videoElement, demuxResult, options = {}) {
+    if (!videoElement || typeof videoElement.appendChild !== "function") {
+      throw new TypeError("attachSubtitleTracks requires a video element");
+    }
+    const doc = options.document || videoElement.ownerDocument || (typeof document !== "undefined" ? document : null);
+    if (!doc || typeof doc.createElement !== "function") {
+      throw new Error("attachSubtitleTracks requires a document");
+    }
+    const subtitleTracks = (demuxResult.tracks || []).filter((track) => track.type === TRACK_TYPES.SUBTITLE);
+    const entries = [];
+    const blobUrls = [];
+    subtitleTracks.forEach((track, index) => {
+      const cues = extractCues(demuxResult, track.number);
+      const format = cues[0] ? cues[0].format : "srt";
+      const vtt = cuesToVtt(cues, format);
+      const blobUrl = URL.createObjectURL(new Blob([vtt], { type: "text/vtt" }));
+      const element = doc.createElement("track");
+      element.kind = "subtitles";
+      element.srclang = track.language || options.defaultLanguage || "und";
+      element.label = track.name || track.language || `Subtitle ${index + 1}`;
+      element.src = blobUrl;
+      element.default = Boolean(track.default);
+      videoElement.appendChild(element);
+      blobUrls.push(blobUrl);
+      entries.push({ track, element, format, cues, src: blobUrl });
+    });
+    return {
+      tracks: entries,
+      revokeAll() {
+        blobUrls.forEach((url) => URL.revokeObjectURL(url));
+      }
+    };
+  }
+
+  // src/playback/player.js
+  var MKVPlayer = class {
+    constructor(videoElement, options = {}) {
+      if (!videoElement) throw new TypeError("MKVPlayer requires a video element");
+      this.video = videoElement;
+      this.options = options;
+      this.mse = null;
+      this.fallbackUrl = null;
+      this.subtitleHandle = null;
+      this.result = null;
+      this.support = null;
+    }
+    async load(source, loadOptions = {}) {
+      this.destroy();
+      const options = { ...this.options, ...loadOptions };
+      const result = await demuxer_default(source, {
+        collectMediaBlocks: true,
+        signal: options.signal,
+        onProgress: options.onProgress
+      });
+      const support = getPlaybackSupport(result.tracks);
+      if (!support.supported) throw new Error(support.reason);
+      this.result = result;
+      this.support = support;
+      try {
+        this.mse = new MSEPlayer(this.video, options);
+        await this.mse.load(result);
+      } catch (error) {
+        if (this.mse) this.mse.destroy();
+        this.mse = null;
+        const remuxed = await remuxToMp4(result, options);
+        this.fallbackUrl = URL.createObjectURL(remuxed.blob);
+        this.video.src = this.fallbackUrl;
+      }
+      this.subtitleHandle = await attachSubtitleTracks(this.video, result, options);
+      if (typeof options.onProgress === "function") options.onProgress(100, 0);
+      return this;
+    }
+    destroy() {
+      if (this.mse) this.mse.destroy();
+      if (this.subtitleHandle) this.subtitleHandle.revokeAll();
+      if (this.video && this.video.querySelectorAll) {
+        this.video.querySelectorAll("track").forEach((track) => track.remove());
+      }
+      if (this.fallbackUrl) {
+        URL.revokeObjectURL(this.fallbackUrl);
+        this.video.removeAttribute("src");
+        this.video.load();
+      }
+      this.mse = null;
+      this.subtitleHandle = null;
+      this.fallbackUrl = null;
+      this.result = null;
+      this.support = null;
+    }
+    getTracks() {
+      if (!this.result) return { video: [], audio: [], subtitles: [] };
+      return {
+        video: this.result.tracks.filter((track) => track.type === TRACK_TYPES.VIDEO),
+        audio: this.result.tracks.filter((track) => track.type === TRACK_TYPES.AUDIO),
+        subtitles: this.result.tracks.filter((track) => track.type === TRACK_TYPES.SUBTITLE)
+      };
+    }
+    async downloadMp4() {
+      if (!this.result) throw new Error("No media has been loaded");
+      const { blob } = await remuxToMp4(this.result, this.options);
+      const filename = this.options.filename || "video.mp4";
+      if (typeof this.options.saveAs === "function") {
+        this.options.saveAs(blob, filename);
+        return blob;
+      }
+      const anchor = document.createElement("a");
+      anchor.href = URL.createObjectURL(blob);
+      anchor.download = filename;
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL(anchor.href), 0);
+      return blob;
+    }
+  };
+  function createPlayer(videoElement, options) {
+    return new MKVPlayer(videoElement, options);
   }
 
   // src/extract/zip-export.js

@@ -4,5 +4,18 @@ import extractAttachments from './extract/attachments.js'
 import { getPlaybackSupport } from './playback/codecs.js'
 import { remuxToMp4 } from './playback/remux.js'
 import { MSEPlayer } from './playback/mse-player.js'
+import { MKVPlayer, createPlayer } from './playback/player.js'
+import { attachSubtitleTracks } from './playback/subtitles.js'
 
-export { demux, extractSubtitles, extractCues, extractAttachments, getPlaybackSupport, remuxToMp4, MSEPlayer }
+export {
+  demux,
+  extractSubtitles,
+  extractCues,
+  extractAttachments,
+  getPlaybackSupport,
+  remuxToMp4,
+  MSEPlayer,
+  MKVPlayer,
+  createPlayer,
+  attachSubtitleTracks
+}

@@ -20,6 +20,15 @@ const cues = extractCues(result, 1)
 
 ## Browser playback
 
+The unified player API demuxes, remuxes, and attaches embedded SRT/ASS subtitle
+tracks (ASS styling is reduced to text-only WebVTT):
+
+```js
+import { createPlayer } from 'mkv.js/browser'
+const player = createPlayer(document.querySelector('video'))
+await player.load(file)
+```
+
 H.264 video and AAC audio can be remuxed without re-encoding and played through
 Media Source Extensions:
 
@@ -48,7 +57,7 @@ For a browser CDN build:
 ```html
 <script src="https://unpkg.com/mkv.js/mkv.js"></script>
 <script>
-  mkvjs.demux(arrayBuffer).then(result => console.log(result))
+  mkvjs.createPlayer(document.querySelector('video')).load(fileInput.files[0])
 </script>
 ```
 

@@ -1,27 +1,43 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>mkv.js MSE player</title>
+<title>mkv.js player</title>
 <input id="file" type="file" accept=".mkv,.webm,video/x-matroska">
+<select id="subtitles" hidden></select>
 <p id="status"></p>
 <video id="video" controls></video>
 <script type="module">
-  import { demux, getPlaybackSupport, MSEPlayer } from '../dist/browser.js'
+  import { createPlayer, getPlaybackSupport } from '../dist/browser.js'
 
   const status = document.querySelector('#status')
   const video = document.querySelector('#video')
+  const subtitles = document.querySelector('#subtitles')
   let player
+  subtitles.addEventListener('change', event => {
+    Array.from(video.textTracks).forEach((track, index) => {
+      track.mode = index === Number(event.target.value) ? 'showing' : 'disabled'
+    })
+  })
   document.querySelector('#file').addEventListener('change', async event => {
     const file = event.target.files[0]
     if (!file) return
     try {
       status.textContent = 'Reading MKV...'
-      const result = await demux(file, { collectMediaBlocks: true })
-      const support = getPlaybackSupport(result.tracks)
-      if (!support.supported) throw new Error(support.reason)
       if (player) player.destroy()
-      player = new MSEPlayer(video)
-      await player.load(result)
-      status.textContent = 'Ready'
+      player = createPlayer(video, {
+        onProgress: percentage => { status.textContent = `Loading... ${percentage.toFixed(0)}%` }
+      })
+      await player.load(file)
+      const tracks = player.getTracks()
+      const support = getPlaybackSupport([...tracks.video, ...tracks.audio])
+      subtitles.replaceChildren()
+      subtitles.hidden = tracks.subtitles.length < 2
+      tracks.subtitles.forEach((track, index) => {
+        const option = document.createElement('option')
+        option.value = index
+        option.textContent = track.name || track.language || `Subtitle ${index + 1}`
+        subtitles.appendChild(option)
+      })
+      status.textContent = `Ready (${support.videoTrack ? support.videoTrack.codecId : 'audio only'})`
     } catch (error) {
       status.textContent = `Playback error: ${error.message}`
     }

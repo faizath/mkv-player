@@ -1,52 +1,7 @@
-var __create = Object.create;
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __getProtoOf = Object.getPrototypeOf;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
-};
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-  // If the importer is in node compatibility mode or this is not an ESM
-  // file that has been converted to a CommonJS file using a Babel-
-  // compatible transform (i.e. "__esModule" has not been set), then set
-  // "default" to the CommonJS "module.exports" for node compatibility.
-  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
-  mod
-));
-var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-
-// src/browser/index.js
-var browser_exports = {};
-__export(browser_exports, {
-  MKVPlayer: () => MKVPlayer,
-  MSEPlayer: () => MSEPlayer,
-  attachSubtitleTracks: () => attachSubtitleTracks,
-  createExtractorUI: () => createExtractorUI,
-  createPlayer: () => createPlayer,
-  demux: () => demuxer_default,
-  extractAttachments: () => attachments_default,
-  extractCues: () => extractCues,
-  extractSubtitles: () => extract_default,
-  getPlaybackSupport: () => getPlaybackSupport,
-  remuxToMp4: () => remuxToMp4
-});
-module.exports = __toCommonJS(browser_exports);
-
 // src/core/demuxer.js
-var import_filereader_stream = __toESM(require("filereader-stream"), 1);
-var import_progress_stream = __toESM(require("progress-stream"), 1);
-var import_stream = require("stream");
+import fileReaderStream from "filereader-stream";
+import progressStream from "progress-stream";
+import { Readable } from "stream";
 
 // src/core/constants.js
 var TRACK_TYPES = {
@@ -76,12 +31,12 @@ var CODEC_IDS = {
 };
 
 // src/core/ebml-reader.js
-var import_ebml = __toESM(require("ebml"), 1);
+import ebml from "ebml";
 function createDecoder() {
-  return new import_ebml.default.Decoder();
+  return new ebml.Decoder();
 }
 function readVint(data) {
-  return import_ebml.default.tools.readVint(data);
+  return ebml.tools.readVint(data);
 }
 
 // src/core/demuxer.js
@@ -134,7 +89,7 @@ function demux(source, options) {
       options.signal.addEventListener("abort", () => fail(abortError()));
     }
     if (options.onProgress) {
-      progress = (0, import_progress_stream.default)({ time: 1e3, length: source.size || 0 }, (data) => {
+      progress = progressStream({ time: 1e3, length: source.size || 0 }, (data) => {
         options.onProgress(data.percentage, data.eta);
       });
       stream = stream.pipe(progress);
@@ -240,13 +195,13 @@ function sourceToStream(source) {
   if (source && typeof source.pipe === "function") return source;
   if (source instanceof ArrayBuffer) return readableFromBuffer(new Uint8Array(source));
   if (typeof Blob !== "undefined" && source instanceof Blob) {
-    return (0, import_filereader_stream.default)(source, { chunkSize: 2 * 1024 * 1024 });
+    return fileReaderStream(source, { chunkSize: 2 * 1024 * 1024 });
   }
   if (source && typeof source.getReader === "function") return readableFromWebStream(source);
   throw new TypeError("source must be a File, Blob, ArrayBuffer, or ReadableStream");
 }
 function readableFromBuffer(buffer) {
-  const stream = new import_stream.Readable();
+  const stream = new Readable();
   stream._read = () => {
     stream.push(Buffer.from(buffer));
     stream.push(null);
@@ -254,7 +209,7 @@ function readableFromBuffer(buffer) {
   return stream;
 }
 function readableFromWebStream(webStream) {
-  const stream = new import_stream.Readable({ read: () => {
+  const stream = new Readable({ read: () => {
   } });
   const reader = webStream.getReader();
   const pump = () => reader.read().then((result) => {
@@ -969,7 +924,7 @@ function codecString(track) {
 }
 
 // src/playback/subtitles.js
-var import_srt2vtt = require("srt2vtt");
+import { convert } from "srt2vtt";
 function cueTimestamp(milliseconds) {
   const total = Math.max(0, milliseconds || 0);
   const hours = Math.floor(total / 36e5);
@@ -995,7 +950,7 @@ ${stripAssTags(cue.text)}`).join("\n\n")}
 
 `;
   }
-  return (0, import_srt2vtt.convert)(cuesToSrt(cues));
+  return convert(cuesToSrt(cues));
 }
 async function attachSubtitleTracks(videoElement, demuxResult, options = {}) {
   if (!videoElement || typeof videoElement.appendChild !== "function") {
@@ -1114,99 +1069,16 @@ function createPlayer(videoElement, options) {
   return new MKVPlayer(videoElement, options);
 }
 
-// src/extract/zip-export.js
-function exportZip(files, filename, JSZip, saveAs) {
-  const zip = new JSZip();
-  files.forEach((file) => {
-    const folder = file.folder ? zip.folder(file.folder) : zip;
-    folder.file(file.name, file.data);
-  });
-  return zip.generateAsync({ type: "blob" }).then((content) => saveAs(content, filename));
-}
-var zip_export_default = exportZip;
-
-// src/browser/demo.js
-function createExtractorUI(options = {}) {
-  const doc = options.document || document;
-  const root = options.root || doc;
-  const input = options.input || root.querySelector("input");
-  const droparea = options.droparea || root.querySelector(".file-drop-area");
-  const statusEl = options.statusEl || root.querySelector(".file-msg");
-  const globals = typeof window !== "undefined" ? window : {};
-  const JSZip = options.JSZip || globals.JSZip;
-  const saveAs = options.saveAs || globals.saveAs;
-  if (!input || !droparea || !statusEl) {
-    throw new TypeError("extractor UI requires an input, file-drop-area, and file-msg element");
-  }
-  if (!JSZip || !saveAs) {
-    throw new TypeError("extractor UI requires JSZip and saveAs");
-  }
-  input.addEventListener("change", handleFiles);
-  ["dragenter", "focus", "click"].forEach((event) => input.addEventListener(event, () => {
-    droparea.classList.add("is-active");
-  }));
-  ["dragleave", "blur", "drop"].forEach((event) => input.addEventListener(event, () => {
-    droparea.classList.remove("is-active");
-  }));
-  return { destroy: () => input.removeEventListener("change", handleFiles) };
-  function handleFiles(event) {
-    const files = Array.from(event.target.files);
-    statusEl.textContent = `Loading ${files.length} ${files.length === 1 ? "file" : "files"}...`;
-    const loadedData = [];
-    let errors = 0;
-    processFile(0);
-    function processFile(index) {
-      if (!files[index]) return packData();
-      const file = files[index];
-      demuxer_default(file, {
-        onProgress: (percentage, eta) => {
-          statusEl.textContent = "Loading file " + (index + 1) + " / " + files.length + ": " + percentage.toFixed(2) + "% (" + formatDuration(eta) + " remaining)";
-        }
-      }).then((result) => {
-        loadedData.push({
-          filename: file.name,
-          data: extract_default(result).concat(attachments_default(result))
-        });
-        processFile(index + 1);
-      }).catch(() => {
-        errors++;
-        processFile(index + 1);
-      });
-    }
-    function packData() {
-      statusEl.textContent = `${loadedData.length} ${loadedData.length === 1 ? "file" : "files"} extracted - ${errors} failed`;
-      if (loadedData.length === 0) return;
-      const entries = [];
-      let filename;
-      if (loadedData.length === 1) {
-        filename = loadedData[0].filename + "_tracks.zip";
-        loadedData[0].data.forEach((entry) => entries.push(entry));
-      } else {
-        filename = `${Date.now().toString(36)}_tracks.zip`;
-        loadedData.forEach((file) => file.data.forEach((entry) => {
-          entries.push({ name: entry.name, data: entry.data, folder: file.filename });
-        }));
-      }
-      zip_export_default(entries, filename, JSZip, saveAs);
-    }
-  }
-}
-
-// src/browser/index.js
-if (typeof document !== "undefined" && document.querySelector(".file-drop-area")) {
-  createExtractorUI();
-}
-// Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {
-  MKVPlayer,
+export {
+  demuxer_default,
+  formatDuration,
+  extractCues,
+  extract_default,
+  attachments_default,
+  getPlaybackSupport,
+  remuxToMp4,
   MSEPlayer,
   attachSubtitleTracks,
-  createExtractorUI,
-  createPlayer,
-  demux,
-  extractAttachments,
-  extractCues,
-  extractSubtitles,
-  getPlaybackSupport,
-  remuxToMp4
-});
+  MKVPlayer,
+  createPlayer
+};

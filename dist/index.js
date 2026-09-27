@@ -1,14 +1,20 @@
 import {
+  MKVPlayer,
   MSEPlayer,
+  attachSubtitleTracks,
   attachments_default,
+  createPlayer,
   demuxer_default,
   extractCues,
   extract_default,
   getPlaybackSupport,
   remuxToMp4
-} from "./chunk-HLEGZOA4.js";
+} from "./chunk-JA5XCBCR.js";
 export {
+  MKVPlayer,
   MSEPlayer,
+  attachSubtitleTracks,
+  createPlayer,
   demuxer_default as demux,
   attachments_default as extractAttachments,
   extractCues,

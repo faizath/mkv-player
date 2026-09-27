@@ -68,6 +68,7 @@
     "filereader-stream": "^1.0.0",
     "process": "^0.11.10",
     "progress-stream": "^2.0.0",
+    "srt2vtt": "file:../srt2vtt.js",
     "stream-browserify": "^3.0.0",
     "tty-browserify": "^0.0.1",
     "util": "^0.12.5"
