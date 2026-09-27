@@ -1,6 +1,7 @@
-# MKV Extract
+# mkv.js
 
-Extract MKV subtitles and attachments directly from the browser: https://qgustavor.github.io/mkv-extract/
+Browser MKV demuxer and player library. The included demo extracts MKV subtitles and
+attachments directly in the browser: https://qgustavor.github.io/mkv-extract/
 
 1. Open or drop a MKV file
 2. Wait a while...

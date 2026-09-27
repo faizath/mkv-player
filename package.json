@@ -1,10 +1,11 @@
 {
-  "name": "mkv-extract",
+  "name": "mkv.js",
   "version": "1.0.0",
-  "description": "Extract MKV tracks and attachments directly from the browser",
+  "description": "browser MKV demuxer and player library",
+  "main": "src/index.js",
   "scripts": {
     "test": "standard",
-    "build": "browserify src/main.js | google-closure-compiler-js > dist/main.js",
+    "build": "browserify src/browser/demo.js | google-closure-compiler-js > dist/main.js",
     "deploy": "gh-pages -d dist"
   },
   "repository": {
@@ -13,7 +14,12 @@
   },
   "keywords": [
     "mkv",
-    "browser"
+    "matroska",
+    "video",
+    "player",
+    "browser",
+    "demuxer",
+    "subtitles"
   ],
   "author": "qgustavor (https://qgustavor.tk)",
   "license": "MIT",
@@ -21,7 +27,7 @@
     "url": "https://github.com/qgustavor/mkv-extract/issues"
   },
   "homepage": "https://github.com/qgustavor/mkv-extract#readme",
-  "private": true,
+  "private": false,
   "standard": {
     "ignore": [
       "dist/main.js"
