@@ -7,6 +7,8 @@ import { MSEPlayer } from './playback/mse-player.js'
 import { MKVPlayer, createPlayer } from './playback/player.js'
 import { attachSubtitleTracks } from './playback/subtitles.js'
 import { resolvePlaybackStrategy } from './playback/strategy.js'
+import { hevcCodecString } from './playback/hevc/hevc-codec.js'
+import { isHevcMseSupported } from './playback/hevc/mse-probe.js'
 
 export {
   demux,
@@ -19,5 +21,7 @@ export {
   MKVPlayer,
   createPlayer,
   attachSubtitleTracks,
-  resolvePlaybackStrategy
+  resolvePlaybackStrategy,
+  hevcCodecString,
+  isHevcMseSupported
 }

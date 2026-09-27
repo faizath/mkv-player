@@ -1,6 +1,7 @@
 /* global Blob */
 import { CODEC_IDS, TRACK_TYPES } from '../core/constants.js'
 import { getPlaybackSupport } from './codecs.js'
+import { hevcVisualSampleEntry, hevcSample } from './hevc/remux-hevc.js'
 
 const encoder = new TextEncoder()
 
@@ -128,6 +129,7 @@ function audioSample (data, track) {
 }
 
 function visualSampleEntry (track) {
+  if (track.codecId === CODEC_IDS.V_MPEGH_HEVC) return hevcVisualSampleEntry(track)
   const width = track.width || 1920
   const height = track.height || 1080
   const compressor = new Uint8Array(32)
@@ -168,6 +170,7 @@ function trackBox (track, id) {
 }
 
 async function createInitSegment (tracks) {
+  const videoBrand = tracks.some(track => track.codecId === CODEC_IDS.V_MPEGH_HEVC) ? 'hvc1' : 'avc1'
   const selected = tracks.filter(track => track.type === TRACK_TYPES.VIDEO || track.type === TRACK_TYPES.AUDIO)
   const mvhd = fullBox('mvhd', 0, 0, new Uint8Array(8), u32(1000), u32(0),
     u32(0x00010000), u16(0x0100), new Uint8Array(10), new Uint8Array([
@@ -180,7 +183,7 @@ async function createInitSegment (tracks) {
   const trex = selected.map((track, index) => fullBox('trex', 0, 0, u32(index + 1),
     u32(1), u32(0), u32(0), u32(0), u32(0)))
   return bytes(box('ftyp', bytes(encoder.encode('isom'), new Uint8Array([0, 0, 2, 0]),
-    encoder.encode('isomiso6avc1mp41'))), box('moov', mvhd,
+    encoder.encode(`isomiso6${videoBrand}mp41`))), box('moov', mvhd,
     ...selected.map((track, index) => trackBox(track, index + 1)), box('mvex', ...trex)))
 }
 
@@ -193,7 +196,9 @@ async function createMediaSegment (blocks, sequenceNumber = 1) {
   const samples = []
   grouped.forEach((trackBlocks, trackNumber) => {
     trackBlocks.forEach((block, index) => {
-      const data = block.trackType === TRACK_TYPES.AUDIO ? audioSample(block.data, block.track) : h264Sample(block.data)
+      const data = block.trackType === TRACK_TYPES.AUDIO
+        ? audioSample(block.data, block.track)
+        : block.track.codecId === CODEC_IDS.V_MPEGH_HEVC ? hevcSample(block.data) : h264Sample(block.data)
       samples.push({ trackNumber, block, data, duration: Math.max(1, Math.round(block.durationMs || block.duration || 33)), index })
     })
   })

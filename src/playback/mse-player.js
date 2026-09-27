@@ -2,6 +2,8 @@
 import { remuxToMp4 } from './remux.js'
 import { getPlaybackSupport } from './codecs.js'
 import { createBlobUrl, revokeBlobUrl } from '../browser/blob-manager.js'
+import { CODEC_IDS } from '../core/constants.js'
+import { hevcCodecString } from './hevc/hevc-codec.js'
 
 class MSEPlayer {
   constructor (videoElement, options = {}) {
@@ -104,6 +106,7 @@ function awaitBuffer (blob) {
 }
 
 function codecString (track) {
+  if (track.codecId === CODEC_IDS.V_MPEGH_HEVC) return hevcCodecString(track.codecPrivate)
   if (track.type === 1) {
     const data = track.codecPrivate instanceof Uint8Array ? track.codecPrivate : new Uint8Array(track.codecPrivate || [])
     if (data[0] === 1 && data.length >= 4) {

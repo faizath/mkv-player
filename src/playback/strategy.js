@@ -13,7 +13,7 @@ function resolvePlaybackStrategy (tracks, options = {}) {
       return { strategy: 'transcode', supported: true, reason: 'HEVC requires remux or transcode', videoTrack, audioTrack, codecs }
     }
     if (isHevcMseSupported(videoTrack.codecPrivate)) {
-      return { strategy: 'remux-hevc', supported: false, reason: 'HEVC remux is not implemented', videoTrack, audioTrack, codecs }
+      return { strategy: 'remux-hevc', supported: true, videoTrack, audioTrack, codecs }
     }
     return { strategy: 'transcode', supported: false, reason: 'HEVC requires remux or transcode', videoTrack, audioTrack, codecs }
   }

@@ -34,7 +34,7 @@ class MKVPlayer {
       : await demux(source, demuxOptions)
     const support = resolvePlaybackStrategy(result.tracks, options)
     if (!support.supported) throw new Error(support.reason)
-    if (support.strategy !== 'remux-mse') {
+    if (support.strategy !== 'remux-mse' && support.strategy !== 'remux-hevc') {
       throw new Error(`${support.strategy} playback is not yet implemented`)
     }
 
