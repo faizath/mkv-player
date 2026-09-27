@@ -50,6 +50,13 @@ export interface PlaybackStrategy {
   audioTrack?: Track
   codecs?: string[]
 }
+export type AssRendererMode = 'text' | 'libass' | 'auto'
+export type BitmapSubtitleMode = boolean | 'auto'
+export interface MKVPlayerOptions extends DemuxOptions {
+  assRenderer?: AssRendererMode
+  bitmapSubtitles?: BitmapSubtitleMode
+  subtitleTrack?: number
+}
 export function resolvePlaybackStrategy(tracks: Track[], options?: { transcode?: boolean }): PlaybackStrategy
 export function remuxToMp4(result: DemuxResult, options?: Record<string, unknown>): Promise<{ blob: Blob, mimeType: string }>
 
@@ -59,10 +66,18 @@ export class MSEPlayer {
   destroy(): void
 }
 
+export class OverlayManager {
+  constructor(video: HTMLVideoElement, options?: MKVPlayerOptions & Record<string, unknown>)
+  attachFromDemux(result: DemuxResult, options?: MKVPlayerOptions & Record<string, unknown>): Promise<this>
+  setActiveTrack(trackNumber?: number): void
+  setVisible(visible: boolean): void
+  destroy(): void
+}
+
 export class MKVPlayer {
-  load(source: ArrayBuffer | Blob, options?: DemuxOptions & { transcode?: boolean }): Promise<this>
+  load(source: ArrayBuffer | Blob, options?: MKVPlayerOptions): Promise<this>
   getTracks(): { video: Track[], audio: Track[], subtitles: Track[] }
   downloadMp4(): Promise<Blob>
 }
 
-export function createPlayer(video: HTMLVideoElement, options?: Record<string, unknown>): MKVPlayer
+export function createPlayer(video: HTMLVideoElement, options?: MKVPlayerOptions & Record<string, unknown>): MKVPlayer

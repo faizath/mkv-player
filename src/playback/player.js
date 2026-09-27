@@ -2,7 +2,7 @@ import demux from '../core/demuxer.js'
 import { resolvePlaybackStrategy } from './strategy.js'
 import { remuxToMp4 } from './remux.js'
 import { MSEPlayer } from './mse-player.js'
-import { attachSubtitleTracks } from './subtitles.js'
+import { OverlayManager } from '../subtitles/overlay/overlay-manager.js'
 import { TRACK_TYPES } from '../core/constants.js'
 import { createWorkerClient } from '../browser/worker-client.js'
 import { createBlobUrl, revokeBlobUrl } from '../browser/blob-manager.js'
@@ -11,10 +11,14 @@ class MKVPlayer {
   constructor (videoElement, options = {}) {
     if (!videoElement) throw new TypeError('MKVPlayer requires a video element')
     this.video = videoElement
-    this.options = options
+    this.options = {
+      assRenderer: 'auto',
+      bitmapSubtitles: 'auto',
+      ...options
+    }
     this.mse = null
     this.fallbackUrl = null
-    this.subtitleHandle = null
+    this.overlayManager = null
     this.result = null
     this.support = null
     this.workerClient = null
@@ -50,24 +54,22 @@ class MKVPlayer {
       this.fallbackUrl = createBlobUrl(remuxed.blob)
       this.video.src = this.fallbackUrl
     }
-    this.subtitleHandle = await attachSubtitleTracks(this.video, result, options)
+    this.overlayManager = new OverlayManager(this.video, options)
+    await this.overlayManager.attachFromDemux(result, options)
     if (typeof options.onProgress === 'function') options.onProgress(100, 0)
     return this
   }
 
   destroy () {
     if (this.mse) this.mse.destroy()
-    if (this.subtitleHandle) this.subtitleHandle.revokeAll()
-    if (this.video && this.video.querySelectorAll) {
-      this.video.querySelectorAll('track').forEach(track => track.remove())
-    }
+    if (this.overlayManager) this.overlayManager.destroy()
     if (this.fallbackUrl) {
       revokeBlobUrl(this.fallbackUrl)
       this.video.removeAttribute('src')
       this.video.load()
     }
     this.mse = null
-    this.subtitleHandle = null
+    this.overlayManager = null
     this.fallbackUrl = null
     this.result = null
     this.support = null

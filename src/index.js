@@ -9,6 +9,7 @@ import { attachSubtitleTracks } from './playback/subtitles.js'
 import { resolvePlaybackStrategy } from './playback/strategy.js'
 import { hevcCodecString } from './playback/hevc/hevc-codec.js'
 import { isHevcMseSupported } from './playback/hevc/mse-probe.js'
+import { OverlayManager } from './subtitles/overlay/overlay-manager.js'
 
 export {
   demux,
@@ -23,5 +24,6 @@ export {
   attachSubtitleTracks,
   resolvePlaybackStrategy,
   hevcCodecString,
-  isHevcMseSupported
+  isHevcMseSupported,
+  OverlayManager
 }
