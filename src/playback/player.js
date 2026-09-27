@@ -1,5 +1,5 @@
 import demux from '../core/demuxer.js'
-import { getPlaybackSupport } from './codecs.js'
+import { resolvePlaybackStrategy } from './strategy.js'
 import { remuxToMp4 } from './remux.js'
 import { MSEPlayer } from './mse-player.js'
 import { attachSubtitleTracks } from './subtitles.js'
@@ -32,8 +32,11 @@ class MKVPlayer {
       ? await (this.workerClient || (this.workerClient = createWorkerClient(options))).demux(
         source instanceof ArrayBuffer ? source.slice(0) : await source.arrayBuffer(), demuxOptions)
       : await demux(source, demuxOptions)
-    const support = getPlaybackSupport(result.tracks)
+    const support = resolvePlaybackStrategy(result.tracks, options)
     if (!support.supported) throw new Error(support.reason)
+    if (support.strategy !== 'remux-mse') {
+      throw new Error(`${support.strategy} playback is not yet implemented`)
+    }
 
     this.result = result
     this.support = support

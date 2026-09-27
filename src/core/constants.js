@@ -22,7 +22,22 @@ const CODEC_IDS = {
   S_TEXT_ASS: 'S_TEXT/ASS',
   S_TEXT_SSA: 'S_TEXT/SSA',
   S_TEXT_USF: 'S_TEXT/USF',
-  S_TEXT_WEBVTT: 'S_TEXT/WEBVTT'
+  S_TEXT_WEBVTT: 'S_TEXT/WEBVTT',
+  S_HDMV_PGS: 'S_HDMV/PGS',
+  S_VOBSUB: 'S_VOBSUB'
 }
 
-export { TRACK_TYPES, CODEC_IDS }
+function isBitmapSubtitleCodec (codecId) {
+  return codecId === CODEC_IDS.S_HDMV_PGS || codecId === CODEC_IDS.S_VOBSUB
+}
+
+function isTextSubtitleCodec (codecId) {
+  return codecId === CODEC_IDS.S_TEXT_UTF8 ||
+    codecId === CODEC_IDS.S_TEXT_ASCII ||
+    codecId === CODEC_IDS.S_TEXT_ASS ||
+    codecId === CODEC_IDS.S_TEXT_SSA ||
+    codecId === CODEC_IDS.S_TEXT_USF ||
+    codecId === CODEC_IDS.S_TEXT_WEBVTT
+}
+
+export { TRACK_TYPES, CODEC_IDS, isBitmapSubtitleCodec, isTextSubtitleCodec }

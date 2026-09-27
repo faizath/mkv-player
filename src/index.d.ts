@@ -16,6 +16,7 @@ export interface Block {
   duration: number
   data: Uint8Array | string
   keyframe: boolean
+  isBinary?: boolean
   durationMs?: number
   blockTimestamp?: number
 }
@@ -29,6 +30,7 @@ export interface DemuxResult {
 
 export interface DemuxOptions {
   collectMediaBlocks?: boolean
+  transcode?: boolean
   signal?: AbortSignal
   onProgress?: (percentage: number, eta: number) => void
 }
@@ -39,6 +41,16 @@ export function extractCues(result: DemuxResult, trackNumber?: number): Array<Re
 export function extractSubtitles(result: DemuxResult): Array<Record<string, unknown>>
 export function extractAttachments(result: DemuxResult): Array<Record<string, unknown>>
 export function getPlaybackSupport(tracks: Track[]): { supported: boolean, reason?: string, videoTrack?: Track, audioTrack?: Track }
+export type PlaybackStrategyName = 'remux-mse' | 'remux-hevc' | 'transcode' | 'unsupported'
+export interface PlaybackStrategy {
+  strategy: PlaybackStrategyName
+  supported: boolean
+  reason?: string
+  videoTrack?: Track
+  audioTrack?: Track
+  codecs?: string[]
+}
+export function resolvePlaybackStrategy(tracks: Track[], options?: { transcode?: boolean }): PlaybackStrategy
 export function remuxToMp4(result: DemuxResult, options?: Record<string, unknown>): Promise<{ blob: Blob, mimeType: string }>
 
 export class MSEPlayer {
@@ -48,7 +60,7 @@ export class MSEPlayer {
 }
 
 export class MKVPlayer {
-  load(source: ArrayBuffer | Blob, options?: DemuxOptions): Promise<this>
+  load(source: ArrayBuffer | Blob, options?: DemuxOptions & { transcode?: boolean }): Promise<this>
   getTracks(): { video: Track[], audio: Track[], subtitles: Track[] }
   downloadMp4(): Promise<Blob>
 }

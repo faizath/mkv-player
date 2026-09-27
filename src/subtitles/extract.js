@@ -15,6 +15,9 @@ function extractCues (result, trackNumber) {
       : (blocks[index + 1] && blocks[index + 1].timecode > block.timecode
         ? blocks[index + 1].timecode
         : block.timecode + DEFAULT_DURATION)
+    if (block.isBinary || format === 'pgs' || format === 'vobsub') {
+      return { startMs: block.timecode, endMs, data: block.data, format }
+    }
     return {
       startMs: block.timecode,
       endMs,
@@ -31,8 +34,12 @@ function extractSubtitles (result) {
       const blocks = getBlocks(result, track.number)
       const cues = extractCues(result, track.number)
       const format = cues[0] ? cues[0].format : detectFormat(track, [])
-      const name = 'Subtitle_' + (index + 1) + (format === 'ass' ? '.ass' : '.srt')
-      return { name, data: format === 'ass' ? assData(track, cues, blocks) : srtData(cues) }
+      const extension = format === 'ass' ? '.ass' : format === 'pgs' ? '.sup' : format === 'vobsub' ? '.sub' : '.srt'
+      const data = format === 'pgs' || format === 'vobsub'
+        ? cues.map(cue => cue.data)
+        : format === 'ass' ? assData(track, cues, blocks) : srtData(cues)
+      const name = 'Subtitle_' + (index + 1) + extension
+      return { name, data }
     })
 }
 
@@ -45,6 +52,8 @@ function getBlocks (result, trackNumber) {
 
 function detectFormat (track, blocks) {
   const codecId = track.codecId
+  if (codecId === CODEC_IDS.S_HDMV_PGS) return 'pgs'
+  if (codecId === CODEC_IDS.S_VOBSUB) return 'vobsub'
   if (codecId === CODEC_IDS.S_TEXT_ASS || codecId === CODEC_IDS.S_TEXT_SSA) return 'ass'
   if (codecId === CODEC_IDS.S_TEXT_UTF8 || codecId === CODEC_IDS.S_TEXT_ASCII) return 'srt'
   const privateData = bufferToString(track.codecPrivate)
@@ -101,5 +110,5 @@ function bufferToString (value) {
   return value == null ? '' : Buffer.from(value).toString('utf8')
 }
 
-export { extractSubtitles, extractCues }
+export { extractSubtitles, extractCues, detectFormat }
 export default extractSubtitles

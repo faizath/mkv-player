@@ -6,6 +6,7 @@ import { remuxToMp4 } from './playback/remux.js'
 import { MSEPlayer } from './playback/mse-player.js'
 import { MKVPlayer, createPlayer } from './playback/player.js'
 import { attachSubtitleTracks } from './playback/subtitles.js'
+import { resolvePlaybackStrategy } from './playback/strategy.js'
 
 export {
   demux,
@@ -17,5 +18,6 @@ export {
   MSEPlayer,
   MKVPlayer,
   createPlayer,
-  attachSubtitleTracks
+  attachSubtitleTracks,
+  resolvePlaybackStrategy
 }

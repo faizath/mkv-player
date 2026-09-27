@@ -2,7 +2,7 @@
 import fileReaderStream from 'filereader-stream'
 import progressStream from 'progress-stream'
 import { Readable } from 'stream'
-import { TRACK_TYPES } from './constants.js'
+import { TRACK_TYPES, isBitmapSubtitleCodec } from './constants.js'
 import { createDecoder, readVint } from './ebml-reader.js'
 
 function demux (source, options) {
@@ -149,13 +149,16 @@ function addBlock (data, result, state) {
   const payload = new Uint8Array(data.slice(trackVint.length + 3))
   const timestamp = toMilliseconds(state.clusterTimecode + relativeTimecode, state.timecodeScale)
   const media = track.type === TRACK_TYPES.VIDEO || track.type === TRACK_TYPES.AUDIO
+  const binarySubtitle = track.type === TRACK_TYPES.SUBTITLE &&
+    isBitmapSubtitleCodec(track.codecId)
   const block = {
     trackNumber,
     timecode: timestamp,
     duration: 0,
-    data: media ? payload : Buffer.from(payload).toString('utf8'),
+    data: media || binarySubtitle ? payload : Buffer.from(payload).toString('utf8'),
     keyframe: Boolean(flags & 0x80)
   }
+  if (binarySubtitle) block.isBinary = true
   if (media) {
     block.clusterTimecodeMs = toMilliseconds(state.clusterTimecode, state.timecodeScale)
     block.blockTimestamp = timestamp
