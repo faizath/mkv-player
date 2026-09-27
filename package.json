@@ -4,7 +4,8 @@
   "description": "browser MKV demuxer and player library",
   "main": "src/index.js",
   "scripts": {
-    "test": "standard",
+    "test": "standard && vitest run",
+    "test:unit": "vitest run",
     "build": "browserify src/browser/demo.js | google-closure-compiler-js > dist/main.js",
     "deploy": "gh-pages -d dist"
   },
@@ -37,7 +38,8 @@
     "browserify": "^14.5.0",
     "gh-pages": "^2.0.1",
     "google-closure-compiler-js": "^20170423.0.0",
-    "standard": "^12.0.1"
+    "standard": "^12.0.1",
+    "vitest": "^2.1.9"
   },
   "dependencies": {
     "ebml": "^2.2.4",

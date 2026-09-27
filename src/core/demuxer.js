@@ -119,7 +119,10 @@ function handleChunk (chunk, result, state) {
   if (name === 'Title') result.info.title = stringValue(value)
   if (name === 'TimecodeScale') state.timecodeScale = numberValue(value)
   if (name === 'Timecode') state.clusterTimecode = numberValue(value)
-  if (name === 'BlockDuration' && state.lastBlock) state.lastBlock.duration = numberValue(value)
+  if (name === 'BlockDuration' && state.lastBlock &&
+    state.stack.indexOf('BlockGroup') !== -1) {
+    state.lastBlock.duration = toMilliseconds(numberValue(value), state.timecodeScale)
+  }
   if (name === 'SimpleBlock' || name === 'Block') addBlock(value, result, state)
 }
 
@@ -135,13 +138,17 @@ function addBlock (data, result, state) {
   const payload = data.slice(trackVint.length + 3)
   const block = {
     trackNumber,
-    timecode: state.clusterTimecode + relativeTimecode,
+    timecode: toMilliseconds(state.clusterTimecode + relativeTimecode, state.timecodeScale),
     duration: 0,
-    data: payload.toString(),
+    data: Buffer.from(payload).toString('utf8'),
     keyframe: Boolean(flags & 0x80)
   }
   state.lastBlock = block
   result.blocksByTrack.get(trackNumber).push(block)
+}
+
+function toMilliseconds (timecode, scale) {
+  return timecode * scale / 1000000
 }
 
 function sourceToStream (source) {
