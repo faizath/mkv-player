@@ -55,6 +55,22 @@ The live demo is in `dist/index.html`; it provides Player and Extract tabs.
 - `remuxToMp4(result)` returns a `{ blob, mimeType }` MP4.
 - `MSEPlayer` can load an existing demux result directly.
 
+### Transcode fallback
+
+Transcoding is opt-in because ffmpeg.wasm is substantially slower and more
+resource-intensive than remuxing. Install the optional peer dependencies:
+
+```sh
+npm install @ffmpeg/ffmpeg @ffmpeg/util
+```
+
+Then enable it with `createPlayer(video, { transcode: true })`. Use
+`transcode: 'auto'` to try transcoding only after the normal MSE/remux path
+fails. The ffmpeg packages are lazy-loaded and are not included in the main
+bundle. The default single-thread core requires no COOP/COEP headers; an
+optional multi-thread core can be configured with `coreURL`/`wasmURL` and
+requires COOP/COEP isolation.
+
 The browser entry also exports `createWorkerClient()` and
 `registerMKVPlayerElement()`. The custom element can be used as
 `<mkv-player src="file.mkv"></mkv-player>` or assigned a `File` through its
@@ -69,9 +85,8 @@ or `ArrayBuffer`. MSE, DOM subtitle tracks, and Web Workers require a browser.
 
 ## Limitations and roadmap
 
-There is no HEVC playback, PGS support, ASS style rendering, or ffmpeg.wasm
-transcoding in this release. ffmpeg.wasm is future work and is intentionally
-not bundled.
+PGS/image subtitle playback and ASS styling remain unsupported. ffmpeg.wasm
+transcoding is optional and intentionally not bundled.
 
 ## Development
 

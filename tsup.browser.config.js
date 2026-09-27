@@ -1,4 +1,5 @@
 export default {
+  external: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
   esbuildOptions (options) {
     options.platform = 'browser'
     options.alias = {

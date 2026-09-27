@@ -6,6 +6,7 @@ import { OverlayManager } from '../subtitles/overlay/overlay-manager.js'
 import { TRACK_TYPES } from '../core/constants.js'
 import { createWorkerClient } from '../browser/worker-client.js'
 import { createBlobUrl, revokeBlobUrl } from '../browser/blob-manager.js'
+import { executeTranscodePlayback } from './strategies/transcode-strategy.js'
 
 class MKVPlayer {
   constructor (videoElement, options = {}) {
@@ -14,6 +15,7 @@ class MKVPlayer {
     this.options = {
       assRenderer: 'auto',
       bitmapSubtitles: 'auto',
+      transcode: false,
       ...options
     }
     this.mse = null
@@ -38,21 +40,34 @@ class MKVPlayer {
       : await demux(source, demuxOptions)
     const support = resolvePlaybackStrategy(result.tracks, options)
     if (!support.supported) throw new Error(support.reason)
+    this.result = result
+    this.support = support
+    if (support.strategy === 'transcode') {
+      const transcoded = await executeTranscodePlayback(this.video, source, options)
+      this.fallbackUrl = transcoded.url
+      this.overlayManager = new OverlayManager(this.video, options)
+      await this.overlayManager.attachFromDemux(result, options)
+      if (typeof options.onProgress === 'function') options.onProgress(100, 0)
+      return this
+    }
     if (support.strategy !== 'remux-mse' && support.strategy !== 'remux-hevc') {
       throw new Error(`${support.strategy} playback is not yet implemented`)
     }
-
-    this.result = result
-    this.support = support
     try {
       this.mse = new MSEPlayer(this.video, options)
       await this.mse.load(result, { signal: options.signal })
     } catch (error) {
       if (this.mse) this.mse.destroy()
       this.mse = null
-      const remuxed = await remuxToMp4(result, options)
-      this.fallbackUrl = createBlobUrl(remuxed.blob)
-      this.video.src = this.fallbackUrl
+      try {
+        const remuxed = await remuxToMp4(result, options)
+        this.fallbackUrl = createBlobUrl(remuxed.blob)
+        this.video.src = this.fallbackUrl
+      } catch (remuxError) {
+        if (options.transcode !== 'auto') throw remuxError
+        const transcoded = await executeTranscodePlayback(this.video, source, options)
+        this.fallbackUrl = transcoded.url
+      }
     }
     this.overlayManager = new OverlayManager(this.video, options)
     await this.overlayManager.attachFromDemux(result, options)

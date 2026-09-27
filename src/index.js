@@ -9,6 +9,7 @@ import { attachSubtitleTracks } from './playback/subtitles.js'
 import { resolvePlaybackStrategy } from './playback/strategy.js'
 import { hevcCodecString } from './playback/hevc/hevc-codec.js'
 import { isHevcMseSupported } from './playback/hevc/mse-probe.js'
+import { loadFfmpeg, transcodeToMp4 } from './playback/transcode/index.js'
 import { OverlayManager } from './subtitles/overlay/overlay-manager.js'
 
 export {
@@ -25,5 +26,7 @@ export {
   resolvePlaybackStrategy,
   hevcCodecString,
   isHevcMseSupported,
+  loadFfmpeg,
+  transcodeToMp4,
   OverlayManager
 }

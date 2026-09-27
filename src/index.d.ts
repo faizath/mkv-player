@@ -30,7 +30,7 @@ export interface DemuxResult {
 
 export interface DemuxOptions {
   collectMediaBlocks?: boolean
-  transcode?: boolean
+  transcode?: boolean | 'auto'
   signal?: AbortSignal
   onProgress?: (percentage: number, eta: number) => void
 }
@@ -57,8 +57,16 @@ export interface MKVPlayerOptions extends DemuxOptions {
   bitmapSubtitles?: BitmapSubtitleMode
   subtitleTrack?: number
 }
-export function resolvePlaybackStrategy(tracks: Track[], options?: { transcode?: boolean }): PlaybackStrategy
+export function resolvePlaybackStrategy(tracks: Track[], options?: { transcode?: boolean | 'auto' }): PlaybackStrategy
 export function remuxToMp4(result: DemuxResult, options?: Record<string, unknown>): Promise<{ blob: Blob, mimeType: string }>
+export interface TranscodeOptions {
+  coreURL?: string
+  wasmURL?: string
+  preset?: string
+  onProgress?: (percentage: number, phase: string) => void
+}
+export function loadFfmpeg(options?: TranscodeOptions): Promise<unknown>
+export function transcodeToMp4(input: Blob | File | ArrayBuffer | Uint8Array, options?: TranscodeOptions): Promise<{ blob: Blob, mimeType: string }>
 
 export class MSEPlayer {
   constructor(video: HTMLVideoElement, options?: Record<string, unknown>)
