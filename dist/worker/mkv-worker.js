@@ -2724,6 +2724,27 @@ var TRACK_TYPES = {
   BUTTONS: 18,
   CONTROL: 32
 };
+var CODEC_IDS = {
+  V_MPEG4_ISO_AVC: "V_MPEG4/ISO/AVC",
+  V_MPEGH_HEVC: "V_MPEGH/ISO/HEVC",
+  A_AAC: "A_AAC",
+  A_AC3: "A_AC3",
+  A_EAC3: "A_EAC3",
+  A_MPEG_L3: "A_MPEG/L3",
+  A_OPUS: "A_OPUS",
+  A_VORBIS: "A_VORBIS",
+  S_TEXT_UTF8: "S_TEXT/UTF8",
+  S_TEXT_ASCII: "S_TEXT/ASCII",
+  S_TEXT_ASS: "S_TEXT/ASS",
+  S_TEXT_SSA: "S_TEXT/SSA",
+  S_TEXT_USF: "S_TEXT/USF",
+  S_TEXT_WEBVTT: "S_TEXT/WEBVTT",
+  S_HDMV_PGS: "S_HDMV/PGS",
+  S_VOBSUB: "S_VOBSUB"
+};
+function isBitmapSubtitleCodec(codecId) {
+  return codecId === CODEC_IDS.S_HDMV_PGS || codecId === CODEC_IDS.S_VOBSUB;
+}
 
 // src/core/ebml-reader.js
 import ebml from "ebml";
@@ -2868,13 +2889,15 @@ function addBlock(data, result, state) {
   const payload = new Uint8Array(data.slice(trackVint.length + 3));
   const timestamp = toMilliseconds(state.clusterTimecode + relativeTimecode, state.timecodeScale);
   const media = track.type === TRACK_TYPES.VIDEO || track.type === TRACK_TYPES.AUDIO;
+  const binarySubtitle = track.type === TRACK_TYPES.SUBTITLE && isBitmapSubtitleCodec(track.codecId);
   const block = {
     trackNumber,
     timecode: timestamp,
     duration: 0,
-    data: media ? payload : Buffer.from(payload).toString("utf8"),
+    data: media || binarySubtitle ? payload : Buffer.from(payload).toString("utf8"),
     keyframe: Boolean(flags & 128)
   };
+  if (binarySubtitle) block.isBinary = true;
   if (media) {
     block.clusterTimecodeMs = toMilliseconds(state.clusterTimecode, state.timecodeScale);
     block.blockTimestamp = timestamp;

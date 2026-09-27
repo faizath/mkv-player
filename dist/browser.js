@@ -1,6 +1,7 @@
 import {
   MKVPlayer,
   MSEPlayer,
+  OverlayManager,
   attachSubtitleTracks,
   attachments_default,
   createPlayer,
@@ -10,8 +11,13 @@ import {
   extract_default,
   formatDuration,
   getPlaybackSupport,
-  remuxToMp4
-} from "./chunk-SPHY4AAI.js";
+  hevcCodecString,
+  isHevcMseSupported,
+  loadFfmpeg,
+  remuxToMp4,
+  resolvePlaybackStrategy,
+  transcodeToMp4
+} from "./chunk-BMREOSMW.js";
 
 // src/extract/zip-export.js
 function exportZip(files, filename, JSZip, saveAs) {
@@ -94,6 +100,14 @@ function createExtractorUI(options = {}) {
 // src/browser/mkv-player-element.js
 var ElementBase = typeof HTMLElement === "undefined" ? class {
 } : HTMLElement;
+function parseBooleanAttribute(element, name) {
+  if (!element.hasAttribute(name)) return void 0;
+  const value = element.getAttribute(name);
+  if (value === "" || value === "true") return true;
+  if (value === "false") return false;
+  if (value === "auto") return "auto";
+  return value;
+}
 var MKVPlayerElement = class extends ElementBase {
   constructor() {
     super();
@@ -115,9 +129,17 @@ var MKVPlayerElement = class extends ElementBase {
   set file(value) {
     if (value) this.load(value);
   }
+  getPlayerOptions() {
+    return {
+      useWorker: this.hasAttribute("use-worker"),
+      transcode: parseBooleanAttribute(this, "transcode"),
+      assRenderer: this.getAttribute("ass-renderer") || "auto",
+      bitmapSubtitles: parseBooleanAttribute(this, "bitmap-subtitles")
+    };
+  }
   async load(source) {
     if (this.player) this.player.destroy();
-    this.player = createPlayer(this.video, { useWorker: this.hasAttribute("use-worker") });
+    this.player = createPlayer(this.video, this.getPlayerOptions());
     if (typeof source === "string") {
       const response = await fetch(source);
       if (!response.ok) throw new Error(`Unable to load ${source}: ${response.status}`);
@@ -147,6 +169,7 @@ if (typeof document !== "undefined" && document.querySelector(".file-drop-area")
 export {
   MKVPlayer,
   MSEPlayer,
+  OverlayManager,
   attachSubtitleTracks,
   createExtractorUI,
   createPlayer,
@@ -156,6 +179,11 @@ export {
   extractCues,
   extract_default as extractSubtitles,
   getPlaybackSupport,
+  hevcCodecString,
+  isHevcMseSupported,
+  loadFfmpeg,
   registerMKVPlayerElement,
-  remuxToMp4
+  remuxToMp4,
+  resolvePlaybackStrategy,
+  transcodeToMp4
 };

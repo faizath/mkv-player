@@ -52,10 +52,17 @@ export interface PlaybackStrategy {
 }
 export type AssRendererMode = 'text' | 'libass' | 'auto'
 export type BitmapSubtitleMode = boolean | 'auto'
+export interface OverlayAssetOptions {
+  assWorkerUrl?: string
+  assWasmUrl?: string
+  pgsWorkerUrl?: string
+}
+
 export interface MKVPlayerOptions extends DemuxOptions {
   assRenderer?: AssRendererMode
   bitmapSubtitles?: BitmapSubtitleMode
   subtitleTrack?: number
+  overlay?: OverlayAssetOptions
 }
 export function resolvePlaybackStrategy(tracks: Track[], options?: { transcode?: boolean | 'auto' }): PlaybackStrategy
 export function remuxToMp4(result: DemuxResult, options?: Record<string, unknown>): Promise<{ blob: Blob, mimeType: string }>

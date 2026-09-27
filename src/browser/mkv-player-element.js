@@ -3,6 +3,15 @@ import { createPlayer } from '../playback/player.js'
 
 const ElementBase = typeof HTMLElement === 'undefined' ? class {} : HTMLElement
 
+function parseBooleanAttribute (element, name) {
+  if (!element.hasAttribute(name)) return undefined
+  const value = element.getAttribute(name)
+  if (value === '' || value === 'true') return true
+  if (value === 'false') return false
+  if (value === 'auto') return 'auto'
+  return value
+}
+
 class MKVPlayerElement extends ElementBase {
   constructor () {
     super()
@@ -28,9 +37,18 @@ class MKVPlayerElement extends ElementBase {
     if (value) this.load(value)
   }
 
+  getPlayerOptions () {
+    return {
+      useWorker: this.hasAttribute('use-worker'),
+      transcode: parseBooleanAttribute(this, 'transcode'),
+      assRenderer: this.getAttribute('ass-renderer') || 'auto',
+      bitmapSubtitles: parseBooleanAttribute(this, 'bitmap-subtitles')
+    }
+  }
+
   async load (source) {
     if (this.player) this.player.destroy()
-    this.player = createPlayer(this.video, { useWorker: this.hasAttribute('use-worker') })
+    this.player = createPlayer(this.video, this.getPlayerOptions())
     if (typeof source === 'string') {
       const response = await fetch(source)
       if (!response.ok) throw new Error(`Unable to load ${source}: ${response.status}`)

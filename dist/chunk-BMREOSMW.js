@@ -27,8 +27,13 @@ var CODEC_IDS = {
   S_TEXT_ASS: "S_TEXT/ASS",
   S_TEXT_SSA: "S_TEXT/SSA",
   S_TEXT_USF: "S_TEXT/USF",
-  S_TEXT_WEBVTT: "S_TEXT/WEBVTT"
+  S_TEXT_WEBVTT: "S_TEXT/WEBVTT",
+  S_HDMV_PGS: "S_HDMV/PGS",
+  S_VOBSUB: "S_VOBSUB"
 };
+function isBitmapSubtitleCodec(codecId) {
+  return codecId === CODEC_IDS.S_HDMV_PGS || codecId === CODEC_IDS.S_VOBSUB;
+}
 
 // src/core/ebml-reader.js
 import ebml from "ebml";
@@ -166,20 +171,22 @@ function addBlock(data, result, state) {
   const trackNumber = trackVint.value;
   const track = state.trackByNumber[trackNumber];
   if (!track || !result.blocksByTrack.has(trackNumber)) return;
-  const bytes2 = new Uint8Array(data);
-  const view = new DataView(bytes2.buffer, bytes2.byteOffset, bytes2.byteLength);
+  const bytes3 = new Uint8Array(data);
+  const view = new DataView(bytes3.buffer, bytes3.byteOffset, bytes3.byteLength);
   const relativeTimecode = view.getInt16(trackVint.length);
-  const flags = bytes2[trackVint.length + 2];
+  const flags = bytes3[trackVint.length + 2];
   const payload = new Uint8Array(data.slice(trackVint.length + 3));
   const timestamp = toMilliseconds(state.clusterTimecode + relativeTimecode, state.timecodeScale);
   const media = track.type === TRACK_TYPES.VIDEO || track.type === TRACK_TYPES.AUDIO;
+  const binarySubtitle = track.type === TRACK_TYPES.SUBTITLE && isBitmapSubtitleCodec(track.codecId);
   const block = {
     trackNumber,
     timecode: timestamp,
     duration: 0,
-    data: media ? payload : Buffer.from(payload).toString("utf8"),
+    data: media || binarySubtitle ? payload : Buffer.from(payload).toString("utf8"),
     keyframe: Boolean(flags & 128)
   };
+  if (binarySubtitle) block.isBinary = true;
   if (media) {
     block.clusterTimecodeMs = toMilliseconds(state.clusterTimecode, state.timecodeScale);
     block.blockTimestamp = timestamp;
@@ -274,6 +281,9 @@ function extractCues(result, trackNumber) {
   const format = detectFormat(track, blocks);
   return blocks.map((block, index) => {
     const endMs = block.duration > 0 ? block.timecode + block.duration : blocks[index + 1] && blocks[index + 1].timecode > block.timecode ? blocks[index + 1].timecode : block.timecode + DEFAULT_DURATION;
+    if (block.isBinary || format === "pgs" || format === "vobsub") {
+      return { startMs: block.timecode, endMs, data: block.data, format };
+    }
     return {
       startMs: block.timecode,
       endMs,
@@ -287,8 +297,10 @@ function extractSubtitles(result) {
     const blocks = getBlocks(result, track.number);
     const cues = extractCues(result, track.number);
     const format = cues[0] ? cues[0].format : detectFormat(track, []);
-    const name = "Subtitle_" + (index + 1) + (format === "ass" ? ".ass" : ".srt");
-    return { name, data: format === "ass" ? assData(track, cues, blocks) : srtData(cues) };
+    const extension = format === "ass" ? ".ass" : format === "pgs" ? ".sup" : format === "vobsub" ? ".sub" : ".srt";
+    const data = format === "pgs" || format === "vobsub" ? cues.map((cue) => cue.data) : format === "ass" ? assData(track, cues, blocks) : srtData(cues);
+    const name = "Subtitle_" + (index + 1) + extension;
+    return { name, data };
   });
 }
 function getBlocks(result, trackNumber) {
@@ -297,6 +309,8 @@ function getBlocks(result, trackNumber) {
 }
 function detectFormat(track, blocks) {
   const codecId = track.codecId;
+  if (codecId === CODEC_IDS.S_HDMV_PGS) return "pgs";
+  if (codecId === CODEC_IDS.S_VOBSUB) return "vobsub";
   if (codecId === CODEC_IDS.S_TEXT_ASS || codecId === CODEC_IDS.S_TEXT_SSA) return "ass";
   if (codecId === CODEC_IDS.S_TEXT_UTF8 || codecId === CODEC_IDS.S_TEXT_ASCII) return "srt";
   const privateData = bufferToString(track.codecPrivate);
@@ -313,9 +327,9 @@ function assData(track, cues, blocks) {
   if (!header) return lines.join("\r\n") + (lines.length ? "\r\n" : "");
   return header + (header.endsWith("\n") ? "" : "\r\n") + lines.join("\r\n") + (lines.length ? "\r\n" : "");
 }
-function assDialogue(cue, codecPrivate2, data) {
+function assDialogue(cue, codecPrivate3, data) {
   const fields = data.split(",");
-  const format = assFormat(codecPrivate2);
+  const format = assFormat(codecPrivate3);
   const start = format.indexOf("start");
   const end = format.indexOf("end");
   if (start !== -1 && end !== -1) {
@@ -329,14 +343,14 @@ function assDialogue(cue, codecPrivate2, data) {
     formatTimestamp(cue.endMs)
   ].concat(fields.slice(1)).join(",");
 }
-function assText(data, codecPrivate2) {
+function assText(data, codecPrivate3) {
   const fields = data.split(",");
-  const format = assFormat(codecPrivate2);
+  const format = assFormat(codecPrivate3);
   const textIndex = format.indexOf("text");
   return textIndex === -1 ? fields[fields.length - 1] : fields.slice(textIndex).join(",");
 }
-function assFormat(codecPrivate2) {
-  const match = bufferToString(codecPrivate2).match(/^\s*Format:\s*([^\r\n]*)/im);
+function assFormat(codecPrivate3) {
+  const match = bufferToString(codecPrivate3).match(/^\s*Format:\s*([^\r\n]*)/im);
   return match ? match[1].split(",").map((field) => field.trim().toLowerCase()) : [];
 }
 function srtData(cues) {
@@ -356,37 +370,72 @@ function extractAttachments(result) {
 }
 var attachments_default = extractAttachments;
 
-// src/playback/codecs.js
-function isWebSafeVideo(codecId) {
-  return codecId === CODEC_IDS.V_MPEG4_ISO_AVC || codecId === "V_AV1";
+// src/playback/hevc/hevc-codec.js
+function hevcCodecString(codecPrivate3) {
+  const data = codecPrivate3 instanceof Uint8Array ? codecPrivate3 : new Uint8Array(codecPrivate3 || []);
+  if (data.length < 13 || data[0] !== 1) return "hvc1.1.6.L93.B0";
+  const profileSpace = ["", "A", "B", "C"][data[1] >> 6 & 3];
+  const profile = data[1] & 31;
+  const compatibility = (data[2] << 24 | data[3] << 16 | data[4] << 8 | data[5]) >>> 0;
+  const compatibilityString = compatibility.toString(16).toUpperCase().replace(/^0+(?=.)/, "");
+  const tier = data[1] & 32 ? "H" : "L";
+  const level = data[12];
+  const constraints = Array.from(data.slice(6, 12));
+  while (constraints.length && constraints[constraints.length - 1] === 0) constraints.pop();
+  const constraintString = constraints.length ? `.${constraints.map((byte) => byte.toString(16).toUpperCase().padStart(2, "0")).join("")}` : "";
+  return `hvc1.${profileSpace}${profile}.${compatibilityString}.${tier}${level}${constraintString}`;
 }
-function isWebSafeAudio(codecId) {
-  return codecId === CODEC_IDS.A_AAC || codecId === CODEC_IDS.A_MPEG_L3;
+
+// src/playback/hevc/mse-probe.js
+function isHevcMseSupported(codecPrivate3) {
+  if (typeof MediaSource === "undefined" || typeof MediaSource.isTypeSupported !== "function") return false;
+  const codec = hevcCodecString(codecPrivate3);
+  return Boolean(codec && MediaSource.isTypeSupported(`video/mp4; codecs="${codec}"`));
 }
-function getPlaybackSupport(tracks) {
+
+// src/playback/strategy.js
+function resolvePlaybackStrategy(tracks, options = {}) {
+  const transcodeEnabled = options.transcode === true || options.transcode === "auto";
   const videoTrack = tracks.find((track) => track.type === TRACK_TYPES.VIDEO);
   const audioTrack = tracks.find((track) => track.type === TRACK_TYPES.AUDIO);
-  const reasons = [];
-  if (!videoTrack && !audioTrack) reasons.push("No video or audio tracks found");
-  if (videoTrack && !isWebSafeVideo(videoTrack.codecId)) {
-    reasons.push(`Unsupported video codec: ${videoTrack.codecId || "unknown"}`);
+  const codecs = [videoTrack, audioTrack].filter(Boolean).map((track) => track.codecId);
+  if (!videoTrack && !audioTrack) {
+    return { strategy: "unsupported", supported: false, reason: "No video or audio tracks found", videoTrack, audioTrack, codecs };
   }
-  if (audioTrack && !isWebSafeAudio(audioTrack.codecId)) {
-    reasons.push(`Unsupported audio codec: ${audioTrack.codecId || "unknown"}`);
+  if (videoTrack && videoTrack.codecId === CODEC_IDS.V_MPEGH_HEVC) {
+    if (transcodeEnabled) {
+      return { strategy: "transcode", supported: true, reason: "HEVC requires remux or transcode", videoTrack, audioTrack, codecs };
+    }
+    if (isHevcMseSupported(videoTrack.codecPrivate)) {
+      return { strategy: "remux-hevc", supported: true, videoTrack, audioTrack, codecs };
+    }
+    return { strategy: "transcode", supported: false, reason: "HEVC requires remux or transcode", videoTrack, audioTrack, codecs };
   }
+  const supportedVideo = !videoTrack || videoTrack.codecId === CODEC_IDS.V_MPEG4_ISO_AVC || videoTrack.codecId === "V_AV1";
+  const supportedAudio = !audioTrack || audioTrack.codecId === CODEC_IDS.A_AAC || audioTrack.codecId === CODEC_IDS.A_MPEG_L3;
+  if (!supportedVideo || !supportedAudio) {
+    const reason = !supportedVideo ? `Unsupported video codec: ${videoTrack.codecId || "unknown"}` : `Unsupported audio codec: ${audioTrack.codecId || "unknown"}`;
+    if (transcodeEnabled) return { strategy: "transcode", supported: true, reason, videoTrack, audioTrack, codecs };
+    return { strategy: "unsupported", supported: false, reason, videoTrack, audioTrack, codecs };
+  }
+  return { strategy: "remux-mse", supported: true, videoTrack, audioTrack, codecs };
+}
+
+// src/playback/codecs.js
+function getPlaybackSupport(tracks) {
+  const strategy = resolvePlaybackStrategy(tracks);
+  const reason = strategy.reason === "HEVC requires remux or transcode" ? `Unsupported video codec: ${CODEC_IDS.V_MPEGH_HEVC}; ${strategy.reason}` : strategy.reason;
   return {
-    supported: reasons.length === 0 && Boolean(videoTrack || audioTrack),
-    videoTrack,
-    audioTrack,
-    ...reasons.length ? { reason: reasons.join("; ") } : {}
+    supported: strategy.supported,
+    videoTrack: strategy.videoTrack,
+    audioTrack: strategy.audioTrack,
+    ...reason ? { reason } : {}
   };
 }
 
-// src/playback/remux.js
-var encoder = new TextEncoder();
+// src/playback/hevc/remux-hevc.js
 function bytes(...parts) {
-  const length = parts.reduce((total, part) => total + part.length, 0);
-  const output = new Uint8Array(length);
+  const output = new Uint8Array(parts.reduce((length, part) => length + part.length, 0));
   let offset = 0;
   parts.forEach((part) => {
     output.set(part, offset);
@@ -399,44 +448,120 @@ function u32(value) {
   new DataView(output.buffer).setUint32(0, value >>> 0);
   return output;
 }
-function i32(value) {
-  const output = new Uint8Array(4);
-  new DataView(output.buffer).setInt32(0, value);
-  return output;
-}
 function u16(value) {
   const output = new Uint8Array(2);
   new DataView(output.buffer).setUint16(0, value);
   return output;
 }
-function box(type, ...contents) {
-  const body = bytes(...contents);
-  return bytes(u32(body.length + 8), encoder.encode(type), body);
+function box(type, content) {
+  return bytes(u32(content.length + 8), new TextEncoder().encode(type), content);
+}
+function codecPrivate(track) {
+  return track.codecPrivate instanceof Uint8Array ? track.codecPrivate : new Uint8Array(track.codecPrivate || []);
+}
+function hevcVisualSampleEntry(track) {
+  const width = track.width || 1920;
+  const height = track.height || 1080;
+  const compressor = new Uint8Array(32);
+  const data = bytes(
+    new Uint8Array(6),
+    u16(1),
+    new Uint8Array(16),
+    u16(width),
+    u16(height),
+    u32(4718592),
+    u32(4718592),
+    new Uint8Array(4),
+    new Uint8Array([0, 0]),
+    compressor,
+    u16(24),
+    u16(65535),
+    box("hvcC", codecPrivate(track))
+  );
+  return box("hvc1", data);
+}
+function nextStart(data, start) {
+  for (let i = start; i + 3 < data.length; i++) {
+    if (data[i] === 0 && data[i + 1] === 0 && (data[i + 2] === 1 || data[i + 2] === 0 && data[i + 3] === 1)) return i;
+  }
+  return data.length;
+}
+function hevcSample(data) {
+  const input = data instanceof Uint8Array ? data : new Uint8Array(data);
+  const nals = [];
+  let start = 0;
+  while (start < input.length) {
+    let marker = -1;
+    for (let i = start; i + 3 < input.length; i++) {
+      if (input[i] === 0 && input[i + 1] === 0 && (input[i + 2] === 1 || input[i + 2] === 0 && input[i + 3] === 1)) {
+        marker = i;
+        break;
+      }
+    }
+    if (marker < 0) break;
+    const nalStart = marker + (input[marker + 2] === 1 ? 3 : 4);
+    const nalEnd = nextStart(input, nalStart);
+    if (nalEnd > nalStart) nals.push(bytes(u32(nalEnd - nalStart), input.slice(nalStart, nalEnd)));
+    start = nalEnd;
+  }
+  return nals.length ? bytes(...nals) : input;
+}
+
+// src/playback/remux.js
+var encoder = new TextEncoder();
+function bytes2(...parts) {
+  const length = parts.reduce((total, part) => total + part.length, 0);
+  const output = new Uint8Array(length);
+  let offset = 0;
+  parts.forEach((part) => {
+    output.set(part, offset);
+    offset += part.length;
+  });
+  return output;
+}
+function u322(value) {
+  const output = new Uint8Array(4);
+  new DataView(output.buffer).setUint32(0, value >>> 0);
+  return output;
+}
+function i32(value) {
+  const output = new Uint8Array(4);
+  new DataView(output.buffer).setInt32(0, value);
+  return output;
+}
+function u162(value) {
+  const output = new Uint8Array(2);
+  new DataView(output.buffer).setUint16(0, value);
+  return output;
+}
+function box2(type, ...contents) {
+  const body = bytes2(...contents);
+  return bytes2(u322(body.length + 8), encoder.encode(type), body);
 }
 function fullBox(type, version, flags, ...contents) {
-  return box(type, bytes(new Uint8Array([version]), new Uint8Array([
+  return box2(type, bytes2(new Uint8Array([version]), new Uint8Array([
     flags >>> 16 & 255,
     flags >>> 8 & 255,
     flags & 255
   ]), ...contents));
 }
-function codecPrivate(track) {
+function codecPrivate2(track) {
   return track.codecPrivate instanceof Uint8Array ? track.codecPrivate : track.codecPrivate ? new Uint8Array(track.codecPrivate) : new Uint8Array(0);
 }
 function avcConfig(track) {
-  const privateData = codecPrivate(track);
+  const privateData = codecPrivate2(track);
   if (privateData.length >= 7 && privateData[0] === 1) return privateData;
   const sps = findNal(privateData, 7);
   const pps = findNal(privateData, 8);
   if (!sps || !pps) {
     return new Uint8Array([1, 66, 0, 30, 255, 225, 0, 0, 1, 0, 0, 0, 1, 0]);
   }
-  return bytes(
+  return bytes2(
     new Uint8Array([1, sps[1] || 66, sps[2] || 0, sps[3] || 30, 255, 225]),
-    u16(sps.length),
+    u162(sps.length),
     sps,
     new Uint8Array([1]),
-    u16(pps.length),
+    u162(pps.length),
     pps
   );
 }
@@ -445,14 +570,14 @@ function findNal(data, type) {
   while (start + 4 < data.length) {
     if (data[start] === 0 && data[start + 1] === 0 && (data[start + 2] === 1 || data[start + 2] === 0 && data[start + 3] === 1)) {
       const header = data[start + 2] === 1 ? start + 3 : start + 4;
-      const end = nextStart(data, header);
+      const end = nextStart2(data, header);
       if ((data[header] & 31) === type) return data.slice(header, end);
       start = end;
     } else start++;
   }
   return null;
 }
-function nextStart(data, start) {
+function nextStart2(data, start) {
   for (let i = start; i + 3 < data.length; i++) {
     if (data[i] === 0 && data[i + 1] === 0 && (data[i + 2] === 1 || data[i + 2] === 0 && data[i + 3] === 1)) return i;
   }
@@ -468,18 +593,18 @@ function h264Sample(data) {
     output.push(input.slice(offset, offset + 4 + length));
     offset += 4 + length;
   }
-  if (output.length && offset === input.length) return bytes(...output);
+  if (output.length && offset === input.length) return bytes2(...output);
   const nals = [];
   let start = 0;
   while (start < input.length) {
     const marker = startCode(input, start);
     if (marker < 0) break;
     const nalStart = marker + (input[marker + 2] === 1 ? 3 : 4);
-    const nalEnd = nextStart(input, nalStart);
-    if (nalEnd > nalStart) nals.push(bytes(u32(nalEnd - nalStart), input.slice(nalStart, nalEnd)));
+    const nalEnd = nextStart2(input, nalStart);
+    if (nalEnd > nalStart) nals.push(bytes2(u322(nalEnd - nalStart), input.slice(nalStart, nalEnd)));
     start = nalEnd;
   }
-  return nals.length ? bytes(...nals) : input;
+  return nals.length ? bytes2(...nals) : input;
 }
 function startCode(data, from) {
   for (let i = from; i + 3 < data.length; i++) {
@@ -497,30 +622,31 @@ function audioSample(data, track) {
   return input;
 }
 function visualSampleEntry(track) {
+  if (track.codecId === CODEC_IDS.V_MPEGH_HEVC) return hevcVisualSampleEntry(track);
   const width = track.width || 1920;
   const height = track.height || 1080;
   const compressor = new Uint8Array(32);
-  const config = box("avcC", avcConfig(track));
-  const data = bytes(
+  const config = box2("avcC", avcConfig(track));
+  const data = bytes2(
     new Uint8Array(6),
-    u16(1),
+    u162(1),
     new Uint8Array(16),
-    u16(width),
-    u16(height),
-    u32(4718592),
-    u32(4718592),
+    u162(width),
+    u162(height),
+    u322(4718592),
+    u322(4718592),
     new Uint8Array(4),
     new Uint8Array([0, 0]),
     compressor,
-    u16(24),
-    u16(65535),
+    u162(24),
+    u162(65535),
     config
   );
-  return box("avc1", data);
+  return box2("avc1", data);
 }
 function audioSampleEntry(track) {
-  const config = codecPrivate(track);
-  const esds = fullBox("esds", 0, 0, bytes(
+  const config = codecPrivate2(track);
+  const esds = fullBox("esds", 0, 0, bytes2(
     new Uint8Array([
       3,
       25,
@@ -549,15 +675,15 @@ function audioSampleEntry(track) {
     new Uint8Array([6, 1, 2])
   ));
   const rate = track.samplingFrequency || 48e3;
-  return box("mp4a", bytes(
+  return box2("mp4a", bytes2(
     new Uint8Array(6),
-    u16(1),
+    u162(1),
     new Uint8Array(8),
-    u16(track.channels || 2),
-    u16(16),
-    u16(0),
-    u16(0),
-    u32(rate << 16),
+    u162(track.channels || 2),
+    u162(16),
+    u162(0),
+    u162(0),
+    u322(rate << 16),
     esds
   ));
 }
@@ -565,18 +691,18 @@ function trackBox(track, id) {
   const video = track.type === TRACK_TYPES.VIDEO;
   const handler = video ? "vide" : "soun";
   const sampleEntry = video ? visualSampleEntry(track) : audioSampleEntry(track);
-  const stbl = box(
+  const stbl = box2(
     "stbl",
-    box("stsd", bytes(new Uint8Array([0, 0, 0, 0]), u32(1), sampleEntry)),
-    box("stts", new Uint8Array(8)),
-    box("stsc", new Uint8Array(8)),
-    box("stsz", new Uint8Array(12)),
-    box("stco", new Uint8Array(8))
+    box2("stsd", bytes2(new Uint8Array([0, 0, 0, 0]), u322(1), sampleEntry)),
+    box2("stts", new Uint8Array(8)),
+    box2("stsc", new Uint8Array(8)),
+    box2("stsz", new Uint8Array(12)),
+    box2("stco", new Uint8Array(8))
   );
-  const minf = box(
+  const minf = box2(
     "minf",
-    video ? box("vmhd", new Uint8Array(8)) : box("smhd", new Uint8Array(4)),
-    box("dinf", box("dref", bytes(new Uint8Array(4), u32(1), box("url ", new Uint8Array([0, 0, 0, 1]))))),
+    video ? box2("vmhd", new Uint8Array(8)) : box2("smhd", new Uint8Array(4)),
+    box2("dinf", box2("dref", bytes2(new Uint8Array(4), u322(1), box2("url ", new Uint8Array([0, 0, 0, 1]))))),
     stbl
   );
   const tkhd = fullBox(
@@ -584,17 +710,17 @@ function trackBox(track, id) {
     0,
     7,
     new Uint8Array(16),
-    u32(id),
+    u322(id),
     new Uint8Array(8),
-    u16(0),
+    u162(0),
     new Uint8Array(2),
     new Uint8Array(8),
-    u32(65536),
+    u322(65536),
     new Uint8Array(8),
-    u32(video ? (track.width || 1920) << 16 : 0),
-    u32(video ? (track.height || 1080) << 16 : 0)
+    u322(video ? (track.width || 1920) << 16 : 0),
+    u322(video ? (track.height || 1080) << 16 : 0)
   );
-  const mdhd = fullBox("mdhd", 0, 0, new Uint8Array(8), u32(1e3), u32(0), u16(21956), u16(0));
+  const mdhd = fullBox("mdhd", 0, 0, new Uint8Array(8), u322(1e3), u322(0), u162(21956), u162(0));
   const hdlr = fullBox(
     "hdlr",
     0,
@@ -604,19 +730,20 @@ function trackBox(track, id) {
     new Uint8Array(12),
     encoder.encode(video ? "VideoHandler\0" : "SoundHandler\0")
   );
-  return box("trak", tkhd, box("mdia", mdhd, hdlr, minf));
+  return box2("trak", tkhd, box2("mdia", mdhd, hdlr, minf));
 }
 async function createInitSegment(tracks) {
+  const videoBrand = tracks.some((track) => track.codecId === CODEC_IDS.V_MPEGH_HEVC) ? "hvc1" : "avc1";
   const selected = tracks.filter((track) => track.type === TRACK_TYPES.VIDEO || track.type === TRACK_TYPES.AUDIO);
   const mvhd = fullBox(
     "mvhd",
     0,
     0,
     new Uint8Array(8),
-    u32(1e3),
-    u32(0),
-    u32(65536),
-    u16(256),
+    u322(1e3),
+    u322(0),
+    u322(65536),
+    u162(256),
     new Uint8Array(10),
     new Uint8Array([
       0,
@@ -757,22 +884,22 @@ async function createInitSegment(tracks) {
     "trex",
     0,
     0,
-    u32(index + 1),
-    u32(1),
-    u32(0),
-    u32(0),
-    u32(0),
-    u32(0)
+    u322(index + 1),
+    u322(1),
+    u322(0),
+    u322(0),
+    u322(0),
+    u322(0)
   ));
-  return bytes(box("ftyp", bytes(
+  return bytes2(box2("ftyp", bytes2(
     encoder.encode("isom"),
     new Uint8Array([0, 0, 2, 0]),
-    encoder.encode("isomiso6avc1mp41")
-  )), box(
+    encoder.encode(`isomiso6${videoBrand}mp41`)
+  )), box2(
     "moov",
     mvhd,
     ...selected.map((track, index) => trackBox(track, index + 1)),
-    box("mvex", ...trex)
+    box2("mvex", ...trex)
   ));
 }
 async function createMediaSegment(blocks, sequenceNumber = 1) {
@@ -784,7 +911,7 @@ async function createMediaSegment(blocks, sequenceNumber = 1) {
   const samples = [];
   grouped.forEach((trackBlocks, trackNumber) => {
     trackBlocks.forEach((block, index) => {
-      const data = block.trackType === TRACK_TYPES.AUDIO ? audioSample(block.data, block.track) : h264Sample(block.data);
+      const data = block.trackType === TRACK_TYPES.AUDIO ? audioSample(block.data, block.track) : block.track.codecId === CODEC_IDS.V_MPEGH_HEVC ? hevcSample(block.data) : h264Sample(block.data);
       samples.push({ trackNumber, block, data, duration: Math.max(1, Math.round(block.durationMs || block.duration || 33)), index });
     });
   });
@@ -793,27 +920,27 @@ async function createMediaSegment(blocks, sequenceNumber = 1) {
   grouped.forEach((trackBlocks, trackNumber) => {
     trackSamplesByNumber.set(trackNumber, samples.filter((sample) => sample.trackNumber === trackNumber));
   });
-  const payload = bytes(...Array.from(trackSamplesByNumber.values()).flat().map((sample) => sample.data));
+  const payload = bytes2(...Array.from(trackSamplesByNumber.values()).flat().map((sample) => sample.data));
   function makeMoof(dataOffset) {
     const trafs = [];
     grouped.forEach((trackBlocks, trackNumber) => {
       const trackSamples = trackSamplesByNumber.get(trackNumber);
-      const entries = trackSamples.map((sample) => bytes(
-        u32(sample.duration),
-        u32(sample.data.length),
-        u32(sample.block.keyframe ? 33554432 : 16842752)
+      const entries = trackSamples.map((sample) => bytes2(
+        u322(sample.duration),
+        u322(sample.data.length),
+        u322(sample.block.keyframe ? 33554432 : 16842752)
       ));
-      const trun = fullBox("trun", 0, 1793, u32(trackSamples.length), i32(dataOffset), ...entries);
-      const tfhd = fullBox("tfhd", 0, 131072, u32(trackNumber));
+      const trun = fullBox("trun", 0, 1793, u322(trackSamples.length), i32(dataOffset), ...entries);
+      const tfhd = fullBox("tfhd", 0, 131072, u322(trackNumber));
       const timestamp = Math.round(trackBlocks[0].blockTimestamp || trackBlocks[0].timecode || 0);
-      const tfdt = fullBox("tfdt", 0, 0, u32(Math.max(0, timestamp)));
-      trafs.push(box("traf", tfhd, tfdt, trun));
+      const tfdt = fullBox("tfdt", 0, 0, u322(Math.max(0, timestamp)));
+      trafs.push(box2("traf", tfhd, tfdt, trun));
     });
-    return box("moof", fullBox("mfhd", 0, 0, u32(sequenceNumber)), ...trafs);
+    return box2("moof", fullBox("mfhd", 0, 0, u322(sequenceNumber)), ...trafs);
   }
   let moof = makeMoof(0);
   moof = makeMoof(moof.length + 8);
-  return bytes(moof, box("mdat", payload));
+  return bytes2(moof, box2("mdat", payload));
 }
 async function remuxToMp4(demuxResult, options = {}) {
   const support = getPlaybackSupport(demuxResult.tracks);
@@ -939,6 +1066,7 @@ function awaitBuffer(blob) {
   return blob.arrayBuffer().then((buffer) => new Uint8Array(buffer));
 }
 function codecString(track) {
+  if (track.codecId === CODEC_IDS.V_MPEGH_HEVC) return hevcCodecString(track.codecPrivate);
   if (track.type === 1) {
     const data = track.codecPrivate instanceof Uint8Array ? track.codecPrivate : new Uint8Array(track.codecPrivate || []);
     if (data[0] === 1 && data.length >= 4) {
@@ -951,7 +1079,7 @@ function codecString(track) {
   return `mp4a.40.${objectType}`;
 }
 
-// src/playback/subtitles.js
+// src/subtitles/overlay/vtt-track-renderer.js
 import { convert } from "srt2vtt";
 function cueTimestamp(milliseconds) {
   const total = Math.max(0, milliseconds || 0);
@@ -980,38 +1108,322 @@ ${stripAssTags(cue.text)}`).join("\n\n")}
   }
   return convert(cuesToSrt(cues));
 }
-async function attachSubtitleTracks(videoElement, demuxResult, options = {}) {
-  if (!videoElement || typeof videoElement.appendChild !== "function") {
-    throw new TypeError("attachSubtitleTracks requires a video element");
-  }
-  const doc = options.document || videoElement.ownerDocument || (typeof document !== "undefined" ? document : null);
-  if (!doc || typeof doc.createElement !== "function") {
-    throw new Error("attachSubtitleTracks requires a document");
-  }
-  const subtitleTracks = (demuxResult.tracks || []).filter((track) => track.type === TRACK_TYPES.SUBTITLE);
-  const entries = [];
-  const blobUrls = [];
-  subtitleTracks.forEach((track, index) => {
-    const cues = extractCues(demuxResult, track.number);
-    const format = cues[0] ? cues[0].format : "srt";
+var VttTrackRenderer = class {
+  attach(video, demuxResult, track, options = {}) {
+    const doc = options.document || video.ownerDocument || (typeof document !== "undefined" ? document : null);
+    if (!doc || typeof doc.createElement !== "function") {
+      throw new Error("VttTrackRenderer requires a document");
+    }
+    const cues = options.cues || extractCues(demuxResult, track.number);
+    const format = options.format || (cues[0] ? cues[0].format : "srt");
     const vtt = cuesToVtt(cues, format);
     const blobUrl = createBlobUrl(new Blob([vtt], { type: "text/vtt" }));
     const element = doc.createElement("track");
     element.kind = "subtitles";
     element.srclang = track.language || options.defaultLanguage || "und";
-    element.label = track.name || track.language || `Subtitle ${index + 1}`;
+    element.label = track.name || track.language || `Subtitle ${options.index + 1}`;
     element.src = blobUrl;
     element.default = Boolean(track.default);
-    videoElement.appendChild(element);
-    blobUrls.push(blobUrl);
-    entries.push({ track, element, format, cues, src: blobUrl });
+    video.appendChild(element);
+    return {
+      track,
+      element,
+      format,
+      cues,
+      src: blobUrl,
+      revoke() {
+        revokeBlobUrl(blobUrl);
+        if (element && typeof element.remove === "function") element.remove();
+      }
+    };
+  }
+};
+
+// src/subtitles/overlay/font-loader.js
+var FONT_MIME_PREFIXES = [
+  "application/x-truetype-font",
+  "application/vnd.ms-opentype",
+  "font/otf",
+  "font/ttf",
+  "font/woff",
+  "font/woff2"
+];
+function isFontAttachment(attachment) {
+  const mime = String(attachment.mimeType || "").toLowerCase();
+  const name = String(attachment.name || "").toLowerCase();
+  return FONT_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix)) || /\.(ttf|otf|woff2?)$/i.test(name);
+}
+async function loadEmbeddedFonts(demuxResult, options = {}) {
+  const doc = options.document || (typeof document !== "undefined" ? document : null);
+  const attachments = demuxResult && demuxResult.attachments || [];
+  const fontUrls = [];
+  const styleElements = [];
+  attachments.filter(isFontAttachment).forEach((attachment) => {
+    if (!attachment.data) return;
+    const mime = attachment.mimeType || "font/otf";
+    const blobUrl = createBlobUrl(new Blob([attachment.data], { type: mime }));
+    fontUrls.push(blobUrl);
+    if (doc && typeof doc.createElement === "function") {
+      const style = doc.createElement("style");
+      const family = attachment.name ? attachment.name.replace(/\.[^.]+$/, "") : "mkv-font";
+      style.textContent = `@font-face{font-family:"${family}";src:url("${blobUrl}")}`;
+      if (doc.head && typeof doc.head.appendChild === "function") doc.head.appendChild(style);
+      styleElements.push(style);
+    }
   });
   return {
-    tracks: entries,
-    revokeAll() {
-      blobUrls.forEach(revokeBlobUrl);
+    urls: fontUrls,
+    revoke() {
+      fontUrls.forEach(revokeBlobUrl);
+      styleElements.forEach((element) => {
+        if (element && typeof element.remove === "function") element.remove();
+      });
     }
   };
+}
+
+// src/subtitles/overlay/ass-renderer.js
+var dynamicImport = new Function("specifier", "return import(specifier)");
+async function defaultAkariModuleLoader() {
+  try {
+    const mod = await dynamicImport("akarisub");
+    return mod.default || mod.AkariSub;
+  } catch (error) {
+    const missing = new Error("Install akarisub peer dependency to enable styled ASS subtitles");
+    missing.cause = error;
+    throw missing;
+  }
+}
+var akariModuleLoader = defaultAkariModuleLoader;
+var AssRenderer = class {
+  async attach(video, track, cues, blocks, options = {}) {
+    if (options._testMock) {
+      return { track, format: "ass", revoke() {
+      } };
+    }
+    const subContent = assData(track, cues, blocks);
+    const AkariSub = await akariModuleLoader();
+    const fonts = await loadEmbeddedFonts(options.demuxResult, options);
+    const renderer = new AkariSub({
+      video,
+      subContent,
+      canvas: options.canvas,
+      workerUrl: options.overlay && options.overlay.assWorkerUrl,
+      wasmUrl: options.overlay && options.overlay.assWasmUrl
+    });
+    return {
+      track,
+      format: "ass",
+      renderer,
+      revoke() {
+        if (renderer && typeof renderer.destroy === "function") renderer.destroy();
+        if (fonts && fonts.revoke) fonts.revoke();
+      }
+    };
+  }
+};
+function createAssRenderer() {
+  return new AssRenderer();
+}
+
+// src/subtitles/bitmap/pgs-adapter.js
+function blockPayload(block) {
+  if (block.data instanceof Uint8Array) return block.data;
+  if (typeof block.data === "string") return new TextEncoder().encode(block.data);
+  return new Uint8Array(0);
+}
+function blocksToPgsBuffer(blocks) {
+  const parts = (blocks || []).map(blockPayload);
+  const total = parts.reduce((sum, part) => sum + part.length, 0);
+  const output = new Uint8Array(total);
+  let offset = 0;
+  parts.forEach((part) => {
+    output.set(part, offset);
+    offset += part.length;
+  });
+  return output.buffer;
+}
+
+// src/subtitles/overlay/pgs-renderer.js
+var dynamicImport2 = new Function("specifier", "return import(specifier)");
+async function defaultPgsModuleLoader() {
+  try {
+    const mod = await dynamicImport2("libbitsub");
+    return mod.PgsRenderer;
+  } catch (error) {
+    const missing = new Error("Install libbitsub peer dependency to enable PGS subtitles");
+    missing.cause = error;
+    throw missing;
+  }
+}
+var pgsModuleLoader = defaultPgsModuleLoader;
+var PgsRendererAdapter = class {
+  async attach(video, track, cues, blocks, options = {}) {
+    if (options._testMock) {
+      return { track, format: "pgs", revoke() {
+      } };
+    }
+    const PgsRenderer = await pgsModuleLoader();
+    const subContent = blocksToPgsBuffer(blocks);
+    const renderer = new PgsRenderer({
+      video,
+      subContent,
+      canvas: options.canvas,
+      workerUrl: options.overlay && options.overlay.pgsWorkerUrl,
+      onError: (error) => {
+        if (typeof console !== "undefined" && console.warn) {
+          console.warn("PGS renderer error", error);
+        }
+      }
+    });
+    return {
+      track,
+      format: "pgs",
+      renderer,
+      revoke() {
+        if (renderer && typeof renderer.dispose === "function") renderer.dispose();
+      }
+    };
+  }
+};
+function createPgsRenderer() {
+  return new PgsRendererAdapter();
+}
+
+// src/subtitles/overlay/overlay-manager.js
+function createCanvasOverlay(videoElement, options = {}) {
+  const doc = options.document || videoElement.ownerDocument || (typeof document !== "undefined" ? document : null);
+  if (!doc || typeof doc.createElement !== "function") {
+    throw new Error("OverlayManager requires a document");
+  }
+  const canvas = doc.createElement("canvas");
+  if (typeof canvas.setAttribute === "function") canvas.setAttribute("aria-hidden", "true");
+  if (!canvas.style) canvas.style = {};
+  canvas.style.position = "absolute";
+  canvas.style.inset = "0";
+  canvas.style.width = "100%";
+  canvas.style.height = "100%";
+  canvas.style.pointerEvents = "none";
+  canvas.style.objectFit = "contain";
+  const parent = videoElement.parentElement || videoElement;
+  if (parent && typeof parent.appendChild === "function") parent.appendChild(canvas);
+  return canvas;
+}
+var OverlayManager = class {
+  constructor(videoElement, options = {}) {
+    if (!videoElement) throw new TypeError("OverlayManager requires a video element");
+    this.video = videoElement;
+    this.options = {
+      assRenderer: "auto",
+      bitmapSubtitles: "auto",
+      ...options
+    };
+    this.canvas = options.createCanvas === false ? null : createCanvasOverlay(videoElement, options);
+    this.entries = [];
+    this.activeTrack = options.subtitleTrack;
+    this.visible = true;
+    this._fullscreenChange = () => this._handleFullscreen();
+    const doc = options.document || videoElement.ownerDocument || (typeof document !== "undefined" ? document : null);
+    if (doc && doc.addEventListener) doc.addEventListener("fullscreenchange", this._fullscreenChange);
+  }
+  async attachFromDemux(demuxResult, options = {}) {
+    const merged = { ...this.options, ...options, demuxResult, canvas: this.canvas };
+    const tracks = (demuxResult.tracks || []).filter((track) => track.type === TRACK_TYPES.SUBTITLE);
+    this._revokeEntries();
+    const vttRenderer = new VttTrackRenderer();
+    const entries = [];
+    for (let index = 0; index < tracks.length; index++) {
+      const track = tracks[index];
+      const cues = extractCues(demuxResult, track.number);
+      const blocks = getBlocks2(demuxResult, track.number);
+      const isBitmap = isBitmapSubtitleCodec(track.codecId);
+      if (isBitmap) {
+        if (merged.bitmapSubtitles === false) continue;
+        try {
+          entries.push(await createPgsRenderer(merged).attach(this.video, track, cues, blocks, merged));
+        } catch (error) {
+          warnFallback(error, "bitmap subtitle");
+        }
+        continue;
+      }
+      const wantsLibass = merged.assRenderer === "libass" || merged.assRenderer === "auto";
+      if (isAss(track, cues) && wantsLibass) {
+        try {
+          entries.push(await createAssRenderer(merged).attach(this.video, track, cues, blocks, merged));
+          continue;
+        } catch (error) {
+          if (merged.assRenderer === "libass") warnFallback(error, "ASS subtitle");
+        }
+      }
+      entries.push(vttRenderer.attach(this.video, demuxResult, track, {
+        ...merged,
+        cues,
+        index
+      }));
+    }
+    this.entries = entries;
+    this._applyTrackSelection();
+    return this;
+  }
+  setActiveTrack(trackNumber) {
+    this.activeTrack = trackNumber;
+    this._applyTrackSelection();
+  }
+  setVisible(visible) {
+    this.visible = Boolean(visible);
+    if (this.canvas && this.canvas.style) this.canvas.style.display = this.visible ? "" : "none";
+    this.entries.forEach((entry) => {
+      if (entry.element && entry.element.track) {
+        entry.element.track.mode = this.visible ? "hidden" : "disabled";
+      }
+    });
+  }
+  destroy() {
+    this._revokeEntries();
+    const doc = this.options.document || this.video.ownerDocument || (typeof document !== "undefined" ? document : null);
+    if (doc && doc.removeEventListener) doc.removeEventListener("fullscreenchange", this._fullscreenChange);
+    if (this.canvas && typeof this.canvas.remove === "function") this.canvas.remove();
+    this.canvas = null;
+  }
+  revokeAll() {
+    this.destroy();
+  }
+  get tracks() {
+    return this.entries;
+  }
+  _revokeEntries() {
+    this.entries.forEach((entry) => {
+      if (entry.revoke) entry.revoke();
+    });
+    this.entries = [];
+  }
+  _applyTrackSelection() {
+    this.entries.forEach((entry) => {
+      if (!entry.element || !entry.element.track) return;
+      const selected = this.activeTrack == null || entry.track.number === this.activeTrack;
+      entry.element.track.mode = selected && this.visible ? "hidden" : "disabled";
+    });
+  }
+  _handleFullscreen() {
+    const doc = this.options.document || this.video.ownerDocument || (typeof document !== "undefined" ? document : null);
+    const fullscreenElement = doc && doc.fullscreenElement;
+    if (!this.canvas || !fullscreenElement || typeof fullscreenElement.appendChild !== "function") return;
+    if (fullscreenElement === this.video || typeof fullscreenElement.contains === "function" && fullscreenElement.contains(this.video)) {
+      fullscreenElement.appendChild(this.canvas);
+    }
+  }
+};
+function getBlocks2(result, trackNumber) {
+  const blocks = result.blocksByTrack instanceof Map ? result.blocksByTrack.get(trackNumber) : result.blocksByTrack && result.blocksByTrack[trackNumber];
+  return (blocks || []).slice().sort((a, b) => a.timecode - b.timecode);
+}
+function isAss(track, cues) {
+  return track.codecId === CODEC_IDS.S_TEXT_ASS || track.codecId === CODEC_IDS.S_TEXT_SSA || cues[0] && cues[0].format === "ass";
+}
+function warnFallback(error, kind) {
+  if (typeof console !== "undefined" && console.warn) {
+    console.warn(`Unable to render ${kind}; skipping or falling back to WebVTT`, error);
+  }
 }
 
 // src/browser/worker-client.js
@@ -1090,15 +1502,96 @@ function deserializeResult(result) {
   return { ...result, blocksByTrack };
 }
 
+// src/playback/transcode/ffmpeg-client.js
+var ffmpeg = null;
+var loadPromise = null;
+var dynamicImport3 = new Function("specifier", "return import(specifier)");
+var DEFAULT_CORE_URL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js";
+var DEFAULT_WASM_URL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.wasm";
+async function defaultFfmpegModuleLoader() {
+  try {
+    const ffmpegModule = await dynamicImport3("@ffmpeg/ffmpeg");
+    const utilModule = await dynamicImport3("@ffmpeg/util");
+    return { FFmpeg: ffmpegModule.FFmpeg, toBlobURL: utilModule.toBlobURL };
+  } catch (error) {
+    const missing = new Error("Install @ffmpeg/ffmpeg and @ffmpeg/util to enable transcode");
+    missing.cause = error;
+    throw missing;
+  }
+}
+var ffmpegModuleLoader = defaultFfmpegModuleLoader;
+async function loadFfmpeg(options = {}) {
+  if (ffmpeg) return ffmpeg;
+  if (loadPromise) return loadPromise;
+  loadPromise = (async () => {
+    const { FFmpeg, toBlobURL } = await ffmpegModuleLoader();
+    const instance = new FFmpeg();
+    const coreURL = options.coreURL || DEFAULT_CORE_URL;
+    const wasmURL = options.wasmURL || DEFAULT_WASM_URL;
+    await instance.load({
+      coreURL: await toBlobURL(coreURL, "text/javascript"),
+      wasmURL: await toBlobURL(wasmURL, "application/wasm")
+    });
+    if (typeof options.onProgress === "function") {
+      instance.on("progress", ({ progress }) => options.onProgress(Math.round(progress * 100), "transcode"));
+    }
+    ffmpeg = instance;
+    return instance;
+  })();
+  try {
+    return await loadPromise;
+  } catch (error) {
+    loadPromise = null;
+    throw error;
+  }
+}
+async function transcodeToMp4(input, options = {}) {
+  const instance = await loadFfmpeg(options);
+  const data = input instanceof Uint8Array ? input : new Uint8Array(input instanceof ArrayBuffer ? input : await input.arrayBuffer());
+  await instance.writeFile("input.mkv", data);
+  await instance.exec([
+    "-i",
+    "input.mkv",
+    "-c:v",
+    "libx264",
+    "-preset",
+    options.preset || "fast",
+    "-crf",
+    "23",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "128k",
+    "-movflags",
+    "+faststart",
+    "output.mp4"
+  ]);
+  const output = await instance.readFile("output.mp4");
+  return { blob: new Blob([output], { type: "video/mp4" }), mimeType: "video/mp4" };
+}
+
+// src/playback/strategies/transcode-strategy.js
+async function executeTranscodePlayback(video, source, options = {}) {
+  const result = await transcodeToMp4(source, options);
+  const url = createBlobUrl(result.blob);
+  video.src = url;
+  return { ...result, url };
+}
+
 // src/playback/player.js
 var MKVPlayer = class {
   constructor(videoElement, options = {}) {
     if (!videoElement) throw new TypeError("MKVPlayer requires a video element");
     this.video = videoElement;
-    this.options = options;
+    this.options = {
+      assRenderer: "auto",
+      bitmapSubtitles: "auto",
+      transcode: false,
+      ...options
+    };
     this.mse = null;
     this.fallbackUrl = null;
-    this.subtitleHandle = null;
+    this.overlayManager = null;
     this.result = null;
     this.support = null;
     this.workerClient = null;
@@ -1115,37 +1608,52 @@ var MKVPlayer = class {
       source instanceof ArrayBuffer ? source.slice(0) : await source.arrayBuffer(),
       demuxOptions
     ) : await demuxer_default(source, demuxOptions);
-    const support = getPlaybackSupport(result.tracks);
+    const support = resolvePlaybackStrategy(result.tracks, options);
     if (!support.supported) throw new Error(support.reason);
     this.result = result;
     this.support = support;
+    if (support.strategy === "transcode") {
+      const transcoded = await executeTranscodePlayback(this.video, source, options);
+      this.fallbackUrl = transcoded.url;
+      this.overlayManager = new OverlayManager(this.video, options);
+      await this.overlayManager.attachFromDemux(result, options);
+      if (typeof options.onProgress === "function") options.onProgress(100, 0);
+      return this;
+    }
+    if (support.strategy !== "remux-mse" && support.strategy !== "remux-hevc") {
+      throw new Error(`${support.strategy} playback is not yet implemented`);
+    }
     try {
       this.mse = new MSEPlayer(this.video, options);
       await this.mse.load(result, { signal: options.signal });
     } catch (error) {
       if (this.mse) this.mse.destroy();
       this.mse = null;
-      const remuxed = await remuxToMp4(result, options);
-      this.fallbackUrl = createBlobUrl(remuxed.blob);
-      this.video.src = this.fallbackUrl;
+      try {
+        const remuxed = await remuxToMp4(result, options);
+        this.fallbackUrl = createBlobUrl(remuxed.blob);
+        this.video.src = this.fallbackUrl;
+      } catch (remuxError) {
+        if (options.transcode !== "auto") throw remuxError;
+        const transcoded = await executeTranscodePlayback(this.video, source, options);
+        this.fallbackUrl = transcoded.url;
+      }
     }
-    this.subtitleHandle = await attachSubtitleTracks(this.video, result, options);
+    this.overlayManager = new OverlayManager(this.video, options);
+    await this.overlayManager.attachFromDemux(result, options);
     if (typeof options.onProgress === "function") options.onProgress(100, 0);
     return this;
   }
   destroy() {
     if (this.mse) this.mse.destroy();
-    if (this.subtitleHandle) this.subtitleHandle.revokeAll();
-    if (this.video && this.video.querySelectorAll) {
-      this.video.querySelectorAll("track").forEach((track) => track.remove());
-    }
+    if (this.overlayManager) this.overlayManager.destroy();
     if (this.fallbackUrl) {
       revokeBlobUrl(this.fallbackUrl);
       this.video.removeAttribute("src");
       this.video.load();
     }
     this.mse = null;
-    this.subtitleHandle = null;
+    this.overlayManager = null;
     this.fallbackUrl = null;
     this.result = null;
     this.support = null;
@@ -1180,17 +1688,30 @@ function createPlayer(videoElement, options) {
   return new MKVPlayer(videoElement, options);
 }
 
+// src/playback/subtitles.js
+async function attachSubtitleTracks(videoElement, demuxResult, options = {}) {
+  const manager = new OverlayManager(videoElement, { ...options, createCanvas: false });
+  await manager.attachFromDemux(demuxResult, options);
+  return manager;
+}
+
 export {
   demuxer_default,
   formatDuration,
   extractCues,
   extract_default,
   attachments_default,
+  hevcCodecString,
+  isHevcMseSupported,
+  resolvePlaybackStrategy,
   getPlaybackSupport,
   remuxToMp4,
   MSEPlayer,
-  attachSubtitleTracks,
+  OverlayManager,
   createWorkerClient,
+  loadFfmpeg,
+  transcodeToMp4,
   MKVPlayer,
-  createPlayer
+  createPlayer,
+  attachSubtitleTracks
 };

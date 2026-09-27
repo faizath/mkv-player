@@ -1,6 +1,7 @@
 import {
   MKVPlayer,
   MSEPlayer,
+  OverlayManager,
   attachSubtitleTracks,
   attachments_default,
   createPlayer,
@@ -8,11 +9,17 @@ import {
   extractCues,
   extract_default,
   getPlaybackSupport,
-  remuxToMp4
-} from "./chunk-SPHY4AAI.js";
+  hevcCodecString,
+  isHevcMseSupported,
+  loadFfmpeg,
+  remuxToMp4,
+  resolvePlaybackStrategy,
+  transcodeToMp4
+} from "./chunk-BMREOSMW.js";
 export {
   MKVPlayer,
   MSEPlayer,
+  OverlayManager,
   attachSubtitleTracks,
   createPlayer,
   demuxer_default as demux,
@@ -20,5 +27,10 @@ export {
   extractCues,
   extract_default as extractSubtitles,
   getPlaybackSupport,
-  remuxToMp4
+  hevcCodecString,
+  isHevcMseSupported,
+  loadFfmpeg,
+  remuxToMp4,
+  resolvePlaybackStrategy,
+  transcodeToMp4
 };
