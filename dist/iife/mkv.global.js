@@ -12486,11 +12486,13 @@ var mkvjs = (() => {
     attachSubtitleTracks: () => attachSubtitleTracks,
     createExtractorUI: () => createExtractorUI,
     createPlayer: () => createPlayer,
+    createWorkerClient: () => createWorkerClient,
     demux: () => demuxer_default,
     extractAttachments: () => attachments_default,
     extractCues: () => extractCues,
     extractSubtitles: () => extract_default,
     getPlaybackSupport: () => getPlaybackSupport,
+    registerMKVPlayerElement: () => registerMKVPlayerElement,
     remuxToMp4: () => remuxToMp4
   });
 
@@ -13327,6 +13329,19 @@ var mkvjs = (() => {
     return { blob: new Blob([init, media], { type: "video/mp4" }), mimeType: "video/mp4" };
   }
 
+  // src/browser/blob-manager.js
+  var urls = /* @__PURE__ */ new Set();
+  function createBlobUrl(value) {
+    const url = URL.createObjectURL(value);
+    urls.add(url);
+    return url;
+  }
+  function revokeBlobUrl(url) {
+    if (!url) return;
+    URL.revokeObjectURL(url);
+    urls.delete(url);
+  }
+
   // src/playback/mse-player.js
   var MSEPlayer = class {
     constructor(videoElement, options = {}) {
@@ -13348,17 +13363,26 @@ var mkvjs = (() => {
       ;
       (this.handlers.get(event) || []).forEach((handler) => handler(value));
     }
-    async load(demuxResult) {
+    async load(demuxResult, loadOptions = {}) {
+      const signal = loadOptions.signal || this.options.signal;
+      if (signal && signal.aborted) throw abortError2();
       const support = getPlaybackSupport(demuxResult.tracks);
       if (!support.supported) throw new Error(support.reason);
       if (typeof MediaSource === "undefined") throw new Error("MediaSource is not supported");
       const result = await remuxToMp4(demuxResult, this.options);
+      if (signal && signal.aborted) throw abortError2();
       const source = new MediaSource();
       this.source = source;
-      this.objectUrl = URL.createObjectURL(source);
+      this.objectUrl = createBlobUrl(source);
       this.video.src = this.objectUrl;
       await new Promise((resolve, reject) => {
+        const onAbort = () => reject(abortError2());
+        if (signal) signal.addEventListener("abort", onAbort, { once: true });
         source.addEventListener("sourceopen", () => {
+          if (signal && signal.aborted) {
+            reject(abortError2());
+            return;
+          }
           try {
             const codecs = [];
             if (support.videoTrack) codecs.push(codecString(support.videoTrack));
@@ -13370,6 +13394,7 @@ var mkvjs = (() => {
           } catch (error) {
             reject(error);
           }
+          if (signal) signal.removeEventListener("abort", onAbort);
         }, { once: true });
         source.addEventListener("error", () => reject(new Error("MediaSource error")), { once: true });
       });
@@ -13395,7 +13420,7 @@ var mkvjs = (() => {
         this.buffer.removeEventListener("updateend", this.flush);
         if (this.source && this.source.readyState === "open") this.source.endOfStream();
       }
-      if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
+      if (this.objectUrl) revokeBlobUrl(this.objectUrl);
       this.video.removeAttribute("src");
       this.video.load();
       this.queue = [];
@@ -13403,6 +13428,11 @@ var mkvjs = (() => {
       this.source = null;
     }
   };
+  function abortError2() {
+    const error = new Error("MSE load aborted");
+    error.name = "AbortError";
+    return error;
+  }
   function awaitBuffer(blob) {
     return blob.arrayBuffer().then((buffer) => new Uint8Array(buffer));
   }
@@ -13535,7 +13565,7 @@ ${stripAssTags(cue.text)}`).join("\n\n")}
       const cues = extractCues(demuxResult, track.number);
       const format = cues[0] ? cues[0].format : "srt";
       const vtt = cuesToVtt(cues, format);
-      const blobUrl = URL.createObjectURL(new Blob([vtt], { type: "text/vtt" }));
+      const blobUrl = createBlobUrl(new Blob([vtt], { type: "text/vtt" }));
       const element = doc.createElement("track");
       element.kind = "subtitles";
       element.srclang = track.language || options.defaultLanguage || "und";
@@ -13549,9 +13579,85 @@ ${stripAssTags(cue.text)}`).join("\n\n")}
     return {
       tracks: entries,
       revokeAll() {
-        blobUrls.forEach((url) => URL.revokeObjectURL(url));
+        blobUrls.forEach(revokeBlobUrl);
       }
     };
+  }
+
+  // src/browser/worker-client.js
+  function createWorkerClient(options = {}) {
+    const script = typeof document !== "undefined" && document.currentScript;
+    const base = script ? script.src : location.href;
+    const defaultUrl = new URL(base.includes("/iife/") ? "../worker/mkv-worker.js" : "worker/mkv-worker.js", base);
+    const worker = options.worker || new Worker(options.workerUrl || defaultUrl, { type: "module" });
+    let nextId = 0;
+    const pending = /* @__PURE__ */ new Map();
+    worker.onmessage = (event) => {
+      const message = event.data || {};
+      const request = pending.get(message.id);
+      if (!request) return;
+      if (message.type === "progress") {
+        if (request.onProgress) request.onProgress(message.percentage, message.eta);
+        return;
+      }
+      pending.delete(message.id);
+      if (message.type === "error") {
+        const error = new Error(message.error);
+        error.name = message.name || "Error";
+        request.reject(error);
+        return;
+      }
+      request.resolve(deserializeResult(message.result));
+    };
+    worker.onerror = (event) => {
+      pending.forEach((request) => request.reject(event.error || new Error(event.message || "Worker error")));
+      pending.clear();
+    };
+    return {
+      demux(source, options2 = {}) {
+        const id = ++nextId;
+        const transferable = source instanceof ArrayBuffer ? source : null;
+        return new Promise((resolve, reject) => {
+          pending.set(id, { resolve, reject, onProgress: options2.onProgress });
+          if (options2.signal) {
+            if (options2.signal.aborted) {
+              pending.delete(id);
+              reject(abortError3());
+              return;
+            }
+            options2.signal.addEventListener("abort", () => {
+              if (!pending.has(id)) return;
+              pending.delete(id);
+              reject(abortError3());
+            }, { once: true });
+          }
+          const workerOptions = { ...options2 };
+          delete workerOptions.onProgress;
+          delete workerOptions.signal;
+          worker.postMessage({ type: "demux", id, source, options: workerOptions }, transferable ? [transferable] : []);
+        });
+      },
+      terminate() {
+        pending.forEach((request) => request.reject(new Error("Worker terminated")));
+        pending.clear();
+        worker.terminate();
+      }
+    };
+  }
+  function abortError3() {
+    const error = new Error("Demux aborted");
+    error.name = "AbortError";
+    return error;
+  }
+  function deserializeResult(result) {
+    const blocksByTrack = /* @__PURE__ */ new Map();
+    (result.blocks || []).forEach(([trackNumber, blocks]) => {
+      blocksByTrack.set(trackNumber, blocks.map((block) => ({
+        ...block,
+        data: block.data && block.data.type === "bytes" ? new Uint8Array(block.data.buffer) : block.data
+      })));
+    });
+    return { ...result, blocksByTrack };
   }
 
   // src/playback/player.js
@@ -13565,27 +13671,32 @@ ${stripAssTags(cue.text)}`).join("\n\n")}
       this.subtitleHandle = null;
       this.result = null;
       this.support = null;
+      this.workerClient = null;
     }
     async load(source, loadOptions = {}) {
       this.destroy();
       const options = { ...this.options, ...loadOptions };
-      const result = await demuxer_default(source, {
+      const demuxOptions = {
         collectMediaBlocks: true,
         signal: options.signal,
         onProgress: options.onProgress
-      });
+      };
+      const result = options.useWorker ? await (this.workerClient || (this.workerClient = createWorkerClient(options))).demux(
+        source instanceof ArrayBuffer ? source.slice(0) : await source.arrayBuffer(),
+        demuxOptions
+      ) : await demuxer_default(source, demuxOptions);
       const support = getPlaybackSupport(result.tracks);
       if (!support.supported) throw new Error(support.reason);
       this.result = result;
       this.support = support;
       try {
         this.mse = new MSEPlayer(this.video, options);
-        await this.mse.load(result);
+        await this.mse.load(result, { signal: options.signal });
       } catch (error) {
         if (this.mse) this.mse.destroy();
         this.mse = null;
         const remuxed = await remuxToMp4(result, options);
-        this.fallbackUrl = URL.createObjectURL(remuxed.blob);
+        this.fallbackUrl = createBlobUrl(remuxed.blob);
         this.video.src = this.fallbackUrl;
       }
       this.subtitleHandle = await attachSubtitleTracks(this.video, result, options);
@@ -13599,7 +13710,7 @@ ${stripAssTags(cue.text)}`).join("\n\n")}
         this.video.querySelectorAll("track").forEach((track) => track.remove());
       }
       if (this.fallbackUrl) {
-        URL.revokeObjectURL(this.fallbackUrl);
+        revokeBlobUrl(this.fallbackUrl);
         this.video.removeAttribute("src");
         this.video.load();
       }
@@ -13608,6 +13719,8 @@ ${stripAssTags(cue.text)}`).join("\n\n")}
       this.fallbackUrl = null;
       this.result = null;
       this.support = null;
+      if (this.workerClient) this.workerClient.terminate();
+      this.workerClient = null;
     }
     getTracks() {
       if (!this.result) return { video: [], audio: [], subtitles: [] };
@@ -13626,10 +13739,10 @@ ${stripAssTags(cue.text)}`).join("\n\n")}
         return blob;
       }
       const anchor = document.createElement("a");
-      anchor.href = URL.createObjectURL(blob);
+      anchor.href = createBlobUrl(blob);
       anchor.download = filename;
       anchor.click();
-      setTimeout(() => URL.revokeObjectURL(anchor.href), 0);
+      setTimeout(() => revokeBlobUrl(anchor.href), 0);
       return blob;
     }
   };
@@ -13715,8 +13828,57 @@ ${stripAssTags(cue.text)}`).join("\n\n")}
     }
   }
 
+  // src/browser/mkv-player-element.js
+  var ElementBase = typeof HTMLElement === "undefined" ? class {
+  } : HTMLElement;
+  var MKVPlayerElement = class extends ElementBase {
+    constructor() {
+      super();
+      this.video = document.createElement("video");
+      this.video.controls = true;
+      this.appendChild(this.video);
+      this.player = null;
+    }
+    connectedCallback() {
+      this.addEventListener("dragover", preventDefault);
+      this.addEventListener("drop", this.handleDrop);
+      const src = this.getAttribute("src");
+      if (src) this.load(src);
+    }
+    disconnectedCallback() {
+      this.removeEventListener("drop", this.handleDrop);
+      if (this.player) this.player.destroy();
+    }
+    set file(value) {
+      if (value) this.load(value);
+    }
+    async load(source) {
+      if (this.player) this.player.destroy();
+      this.player = createPlayer(this.video, { useWorker: this.hasAttribute("use-worker") });
+      if (typeof source === "string") {
+        const response = await fetch(source);
+        if (!response.ok) throw new Error(`Unable to load ${source}: ${response.status}`);
+        source = await response.blob();
+      }
+      return this.player.load(source);
+    }
+    handleDrop(event) {
+      event.preventDefault();
+      const file = event.dataTransfer && event.dataTransfer.files[0];
+      if (file) this.load(file);
+    }
+  };
+  function preventDefault(event) {
+    event.preventDefault();
+  }
+  function registerMKVPlayerElement() {
+    if (typeof customElements === "undefined") return;
+    if (!customElements.get("mkv-player")) customElements.define("mkv-player", MKVPlayerElement);
+  }
+
   // src/browser/index.js
-  if (typeof document !== "undefined" && document.querySelector(".file-drop-area")) {
+  if (typeof customElements !== "undefined") registerMKVPlayerElement();
+  if (typeof document !== "undefined" && document.querySelector(".file-drop-area") && !document.querySelector("#player-file")) {
     createExtractorUI();
   }
   return __toCommonJS(browser_exports);

@@ -1,51 +1,7 @@
-var __create = Object.create;
-var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __getProtoOf = Object.getPrototypeOf;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
-var __export = (target, all) => {
-  for (var name in all)
-    __defProp(target, name, { get: all[name], enumerable: true });
-};
-var __copyProps = (to, from, except, desc) => {
-  if (from && typeof from === "object" || typeof from === "function") {
-    for (let key of __getOwnPropNames(from))
-      if (!__hasOwnProp.call(to, key) && key !== except)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
-  }
-  return to;
-};
-var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
-  // If the importer is in node compatibility mode or this is not an ESM
-  // file that has been converted to a CommonJS file using a Babel-
-  // compatible transform (i.e. "__esModule" has not been set), then set
-  // "default" to the CommonJS "module.exports" for node compatibility.
-  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
-  mod
-));
-var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
-
-// src/index.js
-var src_exports = {};
-__export(src_exports, {
-  MKVPlayer: () => MKVPlayer,
-  MSEPlayer: () => MSEPlayer,
-  attachSubtitleTracks: () => attachSubtitleTracks,
-  createPlayer: () => createPlayer,
-  demux: () => demuxer_default,
-  extractAttachments: () => attachments_default,
-  extractCues: () => extractCues,
-  extractSubtitles: () => extract_default,
-  getPlaybackSupport: () => getPlaybackSupport,
-  remuxToMp4: () => remuxToMp4
-});
-module.exports = __toCommonJS(src_exports);
-
 // src/core/demuxer.js
-var import_filereader_stream = __toESM(require("filereader-stream"), 1);
-var import_progress_stream = __toESM(require("progress-stream"), 1);
-var import_stream = require("stream");
+import fileReaderStream from "filereader-stream";
+import progressStream from "progress-stream";
+import { Readable } from "stream";
 
 // src/core/constants.js
 var TRACK_TYPES = {
@@ -75,12 +31,12 @@ var CODEC_IDS = {
 };
 
 // src/core/ebml-reader.js
-var import_ebml = __toESM(require("ebml"), 1);
+import ebml from "ebml";
 function createDecoder() {
-  return new import_ebml.default.Decoder();
+  return new ebml.Decoder();
 }
 function readVint(data) {
-  return import_ebml.default.tools.readVint(data);
+  return ebml.tools.readVint(data);
 }
 
 // src/core/demuxer.js
@@ -133,7 +89,7 @@ function demux(source, options) {
       options.signal.addEventListener("abort", () => fail(abortError()));
     }
     if (options.onProgress) {
-      progress = (0, import_progress_stream.default)({ time: 1e3, length: source.size || 0 }, (data) => {
+      progress = progressStream({ time: 1e3, length: source.size || 0 }, (data) => {
         options.onProgress(data.percentage, data.eta);
       });
       stream = stream.pipe(progress);
@@ -239,13 +195,13 @@ function sourceToStream(source) {
   if (source && typeof source.pipe === "function") return source;
   if (source instanceof ArrayBuffer) return readableFromBuffer(new Uint8Array(source));
   if (typeof Blob !== "undefined" && source instanceof Blob) {
-    return (0, import_filereader_stream.default)(source, { chunkSize: 2 * 1024 * 1024 });
+    return fileReaderStream(source, { chunkSize: 2 * 1024 * 1024 });
   }
   if (source && typeof source.getReader === "function") return readableFromWebStream(source);
   throw new TypeError("source must be a File, Blob, ArrayBuffer, or ReadableStream");
 }
 function readableFromBuffer(buffer) {
-  const stream = new import_stream.Readable();
+  const stream = new Readable();
   stream._read = () => {
     stream.push(Buffer.from(buffer));
     stream.push(null);
@@ -253,7 +209,7 @@ function readableFromBuffer(buffer) {
   return stream;
 }
 function readableFromWebStream(webStream) {
-  const stream = new import_stream.Readable({ read: () => {
+  const stream = new Readable({ read: () => {
   } });
   const reader = webStream.getReader();
   const pump = () => reader.read().then((result) => {
@@ -298,6 +254,15 @@ function formatTimestampSRT(timestamp) {
   if (mm < 10) mm = `0${mm}`;
   if (ss < 10) ss = `0${ss}`;
   return `${hh}:${mm}:${ss}`;
+}
+function formatDuration(duration) {
+  duration = Math.round(duration);
+  if (duration < 2) return "few seconds";
+  if (duration < 58) return duration + " seconds";
+  if (duration < 120) return "1 minute";
+  if (duration < 3598) return Math.floor(duration / 60) + " minutes";
+  if (duration < 7200) return "2 hours";
+  return Math.floor(duration / 3600) + " hours";
 }
 
 // src/subtitles/extract.js
@@ -987,7 +952,7 @@ function codecString(track) {
 }
 
 // src/playback/subtitles.js
-var import_srt2vtt = require("srt2vtt");
+import { convert } from "srt2vtt";
 function cueTimestamp(milliseconds) {
   const total = Math.max(0, milliseconds || 0);
   const hours = Math.floor(total / 36e5);
@@ -1013,7 +978,7 @@ ${stripAssTags(cue.text)}`).join("\n\n")}
 
 `;
   }
-  return (0, import_srt2vtt.convert)(cuesToSrt(cues));
+  return convert(cuesToSrt(cues));
 }
 async function attachSubtitleTracks(videoElement, demuxResult, options = {}) {
   if (!videoElement || typeof videoElement.appendChild !== "function") {
@@ -1214,16 +1179,18 @@ var MKVPlayer = class {
 function createPlayer(videoElement, options) {
   return new MKVPlayer(videoElement, options);
 }
-// Annotate the CommonJS export names for ESM import in node:
-0 && (module.exports = {
-  MKVPlayer,
+
+export {
+  demuxer_default,
+  formatDuration,
+  extractCues,
+  extract_default,
+  attachments_default,
+  getPlaybackSupport,
+  remuxToMp4,
   MSEPlayer,
   attachSubtitleTracks,
-  createPlayer,
-  demux,
-  extractAttachments,
-  extractCues,
-  extractSubtitles,
-  getPlaybackSupport,
-  remuxToMp4
-});
+  createWorkerClient,
+  MKVPlayer,
+  createPlayer
+};

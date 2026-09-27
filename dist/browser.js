@@ -4,13 +4,14 @@ import {
   attachSubtitleTracks,
   attachments_default,
   createPlayer,
+  createWorkerClient,
   demuxer_default,
   extractCues,
   extract_default,
   formatDuration,
   getPlaybackSupport,
   remuxToMp4
-} from "./chunk-JA5XCBCR.js";
+} from "./chunk-SPHY4AAI.js";
 
 // src/extract/zip-export.js
 function exportZip(files, filename, JSZip, saveAs) {
@@ -90,8 +91,57 @@ function createExtractorUI(options = {}) {
   }
 }
 
+// src/browser/mkv-player-element.js
+var ElementBase = typeof HTMLElement === "undefined" ? class {
+} : HTMLElement;
+var MKVPlayerElement = class extends ElementBase {
+  constructor() {
+    super();
+    this.video = document.createElement("video");
+    this.video.controls = true;
+    this.appendChild(this.video);
+    this.player = null;
+  }
+  connectedCallback() {
+    this.addEventListener("dragover", preventDefault);
+    this.addEventListener("drop", this.handleDrop);
+    const src = this.getAttribute("src");
+    if (src) this.load(src);
+  }
+  disconnectedCallback() {
+    this.removeEventListener("drop", this.handleDrop);
+    if (this.player) this.player.destroy();
+  }
+  set file(value) {
+    if (value) this.load(value);
+  }
+  async load(source) {
+    if (this.player) this.player.destroy();
+    this.player = createPlayer(this.video, { useWorker: this.hasAttribute("use-worker") });
+    if (typeof source === "string") {
+      const response = await fetch(source);
+      if (!response.ok) throw new Error(`Unable to load ${source}: ${response.status}`);
+      source = await response.blob();
+    }
+    return this.player.load(source);
+  }
+  handleDrop(event) {
+    event.preventDefault();
+    const file = event.dataTransfer && event.dataTransfer.files[0];
+    if (file) this.load(file);
+  }
+};
+function preventDefault(event) {
+  event.preventDefault();
+}
+function registerMKVPlayerElement() {
+  if (typeof customElements === "undefined") return;
+  if (!customElements.get("mkv-player")) customElements.define("mkv-player", MKVPlayerElement);
+}
+
 // src/browser/index.js
-if (typeof document !== "undefined" && document.querySelector(".file-drop-area")) {
+if (typeof customElements !== "undefined") registerMKVPlayerElement();
+if (typeof document !== "undefined" && document.querySelector(".file-drop-area") && !document.querySelector("#player-file")) {
   createExtractorUI();
 }
 export {
@@ -100,10 +150,12 @@ export {
   attachSubtitleTracks,
   createExtractorUI,
   createPlayer,
+  createWorkerClient,
   demuxer_default as demux,
   attachments_default as extractAttachments,
   extractCues,
   extract_default as extractSubtitles,
   getPlaybackSupport,
+  registerMKVPlayerElement,
   remuxToMp4
 };

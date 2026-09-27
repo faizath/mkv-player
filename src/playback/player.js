@@ -4,6 +4,8 @@ import { remuxToMp4 } from './remux.js'
 import { MSEPlayer } from './mse-player.js'
 import { attachSubtitleTracks } from './subtitles.js'
 import { TRACK_TYPES } from '../core/constants.js'
+import { createWorkerClient } from '../browser/worker-client.js'
+import { createBlobUrl, revokeBlobUrl } from '../browser/blob-manager.js'
 
 class MKVPlayer {
   constructor (videoElement, options = {}) {
@@ -15,16 +17,21 @@ class MKVPlayer {
     this.subtitleHandle = null
     this.result = null
     this.support = null
+    this.workerClient = null
   }
 
   async load (source, loadOptions = {}) {
     this.destroy()
     const options = { ...this.options, ...loadOptions }
-    const result = await demux(source, {
+    const demuxOptions = {
       collectMediaBlocks: true,
       signal: options.signal,
       onProgress: options.onProgress
-    })
+    }
+    const result = options.useWorker
+      ? await (this.workerClient || (this.workerClient = createWorkerClient(options))).demux(
+        source instanceof ArrayBuffer ? source.slice(0) : await source.arrayBuffer(), demuxOptions)
+      : await demux(source, demuxOptions)
     const support = getPlaybackSupport(result.tracks)
     if (!support.supported) throw new Error(support.reason)
 
@@ -32,12 +39,12 @@ class MKVPlayer {
     this.support = support
     try {
       this.mse = new MSEPlayer(this.video, options)
-      await this.mse.load(result)
+      await this.mse.load(result, { signal: options.signal })
     } catch (error) {
       if (this.mse) this.mse.destroy()
       this.mse = null
       const remuxed = await remuxToMp4(result, options)
-      this.fallbackUrl = URL.createObjectURL(remuxed.blob)
+      this.fallbackUrl = createBlobUrl(remuxed.blob)
       this.video.src = this.fallbackUrl
     }
     this.subtitleHandle = await attachSubtitleTracks(this.video, result, options)
@@ -52,7 +59,7 @@ class MKVPlayer {
       this.video.querySelectorAll('track').forEach(track => track.remove())
     }
     if (this.fallbackUrl) {
-      URL.revokeObjectURL(this.fallbackUrl)
+      revokeBlobUrl(this.fallbackUrl)
       this.video.removeAttribute('src')
       this.video.load()
     }
@@ -61,6 +68,8 @@ class MKVPlayer {
     this.fallbackUrl = null
     this.result = null
     this.support = null
+    if (this.workerClient) this.workerClient.terminate()
+    this.workerClient = null
   }
 
   getTracks () {
@@ -81,10 +90,10 @@ class MKVPlayer {
       return blob
     }
     const anchor = document.createElement('a')
-    anchor.href = URL.createObjectURL(blob)
+    anchor.href = createBlobUrl(blob)
     anchor.download = filename
     anchor.click()
-    setTimeout(() => URL.revokeObjectURL(anchor.href), 0)
+    setTimeout(() => revokeBlobUrl(anchor.href), 0)
     return blob
   }
 }

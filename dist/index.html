@@ -1,24 +1,41 @@
-<!doctype html><meta charset="utf-8">
-<title>mkv.js</title>
+<!doctype html>
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- Style from http://codepen.io/prasanjit/pen/NxjZMO -->
-<link href="https://fonts.googleapis.com/css?family=PT+Sans" rel="stylesheet">
+<title>mkv.js — browser MKV tools</title>
 <link rel="stylesheet" href="main.css">
-<h2>mkv.js</h2>
-<div class="file-drop-area">
-  <span class="fake-btn">Choose files</span>
-  <span class="file-msg">or drag and drop files here</span>
-  <input class="file-input" type="file" multiple>
-</div>
-<div class="info">
-  Subtitles and attachments will be extracted, zipped and downloaded.<br>
-  <a href="https://github.com/qgustavor/mkv.js">View project on GitHub</a>
-  <noscript>No servers were harmed in this experiment: please enable JavaScript.</noscript>
-</div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.3/jszip.min.js"
-  integrity="sha256-RbP/rbx4XeYJH6eYUniR63Jk5NEV48Gjestg49cNSWY="
-  crossorigin="anonymous"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/1.3.3/FileSaver.min.js"
-  integrity="sha256-FPJJt8nA+xL4RU6/gsriA8p8xAeLGatoyTjldvQKGdE="
-  crossorigin="anonymous"></script>
+<main class="shell">
+  <header><p class="eyebrow">mkv.js</p><h1>MKV tools that run in your browser.</h1>
+    <p>Play compatible H.264/AAC media or extract subtitles and attachments. Files stay local.</p></header>
+  <nav class="tabs"><button class="tab active" data-tab="player">Player</button><button class="tab" data-tab="extract">Extract</button></nav>
+  <section id="player" class="panel active"><input id="player-file" type="file" accept=".mkv,.webm,video/x-matroska"><p id="player-status">Choose an MKV file to begin.</p><video id="video" controls></video></section>
+  <section id="extract" class="panel"><div class="file-drop-area"><span class="fake-btn">Choose files</span><span class="file-msg">or drag and drop files here</span><input class="file-input" type="file" multiple></div><p class="file-msg-status"></p></section>
+  <footer><a href="https://github.com/qgustavor/mkv.js">GitHub</a> · <a href="https://www.npmjs.com/package/mkv.js">npm</a>
+    <code>npm install mkv.js</code><code>&lt;script src="https://unpkg.com/mkv.js/mkv.js"&gt;&lt;/script&gt;</code></footer>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.3/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/1.3.3/FileSaver.min.js"></script>
 <script src="iife/mkv.global.js"></script>
+<script>
+  const video = document.querySelector('#video')
+  const status = document.querySelector('#player-status')
+  let player
+  document.querySelector('#player-file').addEventListener('change', async event => {
+    const file = event.target.files[0]
+    if (!file) return
+    try {
+      if (player) player.destroy()
+      player = mkvjs.createPlayer(video, { onProgress: p => { status.textContent = `Loading… ${p.toFixed(0)}%` } })
+      await player.load(file)
+      status.textContent = 'Ready'
+    } catch (error) { status.textContent = `Playback error: ${error.message}` }
+  })
+  document.querySelectorAll('.tab').forEach(button => button.addEventListener('click', () => {
+    document.querySelectorAll('.tab, .panel').forEach(element => element.classList.remove('active'))
+    button.classList.add('active'); document.querySelector('#' + button.dataset.tab).classList.add('active')
+  }))
+  mkvjs.createExtractorUI({
+    input: document.querySelector('#extract .file-input'),
+    droparea: document.querySelector('#extract .file-drop-area'),
+    statusEl: document.querySelector('.file-msg-status')
+  })
+</script>

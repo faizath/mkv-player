@@ -1,84 +1,9 @@
-html, body {
-  height: 100%;
-  margin: 0;
-}
-
-body {
-  background-color: #37385F;
-  color: #D7D7EF;
-  font-family: 'PT Sans', sans-serif;
-  display: -ms-flexbox;
-  display: flex;
-  -ms-flex-align: center;
-      align-items: center;
-  -ms-flex-pack: center;
-      justify-content: center;
-  -ms-flex-direction: column;
-  flex-direction: column;
-}
-
-h2 {
-  text-align: center;
-  margin: 1em 0;
-}
-
-.file-drop-area {
-  border: 1px dashed #7c7db3;
-  border-radius: 3px;
-  position: relative;
-  width: 500px;
-  max-width: 100%;
-  margin: 0 auto;
-  padding: 26px 20px 30px;
-  transition: 0.2s background-color;
-  box-sizing: border-box;
-}
-.file-drop-area.is-active {
-  background-color: #3F4069;
-}
-
-.fake-btn {
-  background-color: #3F4069;
-  border: 1px solid #9E9EC4;
-  border-radius: 3px;
-  padding: 8px 15px;
-  margin-right: 8px;
-  font-size: 12px;
-  text-transform: uppercase;
-}
-
-.file-msg {
-  font-size: small;
-  font-weight: 300;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: inline-block;
-  max-width: calc(100% - 130px);
-  vertical-align: middle;
-}
-
-.file-input {
-  position: absolute;
-  left: 0;
-  top: 0;
-  height: 100%;
-  width: 100%;
-  cursor: pointer;
-  opacity: 0;
-}
-.file-input:focus {
-  outline: none;
-}
-.info {
-  margin: 1em auto 33vh;
-  text-align: center;
-}
-
-.info a {
-  color: #D7EFD7;
-}
-.info a:focus, .info a:hover {
-  color: #D7EFD7;
-  text-decoration: none;
-}
+:root { color-scheme: dark; font-family: system-ui, sans-serif; background: #10131f; color: #e9ecf5 }
+* { box-sizing: border-box } body { margin: 0 } .shell { max-width: 900px; margin: 0 auto; padding: 4rem 1.5rem }
+header { max-width: 650px } h1 { font-size: clamp(2rem, 6vw, 4rem); line-height: 1.05; margin: .2rem 0 1rem } header p { color: #aab2c8 }
+.eyebrow { color: #8ea7ff; font-weight: 700; letter-spacing: .12em; text-transform: uppercase }
+.tabs { display: flex; gap: .5rem; margin: 2rem 0 1rem } button { border: 0; border-radius: 999px; padding: .7rem 1.2rem; background: #252b41; color: inherit; cursor: pointer } button.active { background: #8ea7ff; color: #10131f }
+.panel { display: none; padding: 1.5rem; border: 1px solid #303950; border-radius: 1rem; background: #171b2a } .panel.active { display: block }
+video { display: block; width: 100%; max-height: 65vh; margin-top: 1rem; background: #070910 } input[type=file] { margin: .5rem 0 }
+.file-drop-area { position: relative; border: 1px dashed #586582; border-radius: .75rem; padding: 2rem; text-align: center } .file-input { position: absolute; inset: 0; opacity: 0; cursor: pointer } .fake-btn { font-weight: 700; margin-right: .5rem }
+footer { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 2rem; color: #aab2c8; align-items: center } a { color: #9eb2ff } code { font-size: .8rem; background: #20263a; padding: .25rem .4rem; border-radius: .25rem }

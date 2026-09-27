@@ -2,6 +2,7 @@
 import { convert } from 'srt2vtt'
 import { extractCues } from '../subtitles/extract.js'
 import { TRACK_TYPES } from '../core/constants.js'
+import { createBlobUrl, revokeBlobUrl } from '../browser/blob-manager.js'
 
 function cueTimestamp (milliseconds) {
   const total = Math.max(0, milliseconds || 0)
@@ -44,7 +45,7 @@ async function attachSubtitleTracks (videoElement, demuxResult, options = {}) {
     const cues = extractCues(demuxResult, track.number)
     const format = cues[0] ? cues[0].format : 'srt'
     const vtt = cuesToVtt(cues, format)
-    const blobUrl = URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' }))
+    const blobUrl = createBlobUrl(new Blob([vtt], { type: 'text/vtt' }))
     const element = doc.createElement('track')
     element.kind = 'subtitles'
     element.srclang = track.language || options.defaultLanguage || 'und'
@@ -59,7 +60,7 @@ async function attachSubtitleTracks (videoElement, demuxResult, options = {}) {
   return {
     tracks: entries,
     revokeAll () {
-      blobUrls.forEach(url => URL.revokeObjectURL(url))
+      blobUrls.forEach(revokeBlobUrl)
     }
   }
 }

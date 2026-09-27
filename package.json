@@ -1,10 +1,11 @@
 {
   "name": "mkv.js",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "browser MKV demuxer and player library",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "import": "./dist/index.js",
@@ -19,12 +20,13 @@
     "dist",
     "mkv.js",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "test": "standard && vitest run",
     "test:unit": "vitest run",
-    "build": "tsup --entry.index=src/index.js --entry.browser=src/browser/index.js --format esm,cjs --out-dir dist && tsup --config tsup.browser.config.js --entry.mkv=src/browser/index.js --format iife --global-name mkvjs --out-dir dist/iife && cp dist/iife/mkv.global.js mkv.js && mkdir -p dist/examples && cp examples/player.html dist/examples/player.html",
+    "build": "tsup --entry.index=src/index.js --entry.browser=src/browser/index.js --format esm,cjs --out-dir dist && tsup --config tsup.browser.config.js --entry.mkv=src/browser/index.js --format iife --global-name mkvjs --out-dir dist/iife && tsup --config tsup.browser.config.js --entry.mkv-worker=src/worker/mkv-worker.js --format esm --out-dir dist/worker && cp dist/iife/mkv.global.js mkv.js && mkdir -p dist/examples && cp examples/*.html dist/examples/ && cp src/index.d.ts dist/index.d.ts",
     "prepublishOnly": "npm run build",
     "deploy": "gh-pages -d dist"
   },

@@ -1,6 +1,7 @@
-/* global MediaSource, URL */
+/* global MediaSource */
 import { remuxToMp4 } from './remux.js'
 import { getPlaybackSupport } from './codecs.js'
+import { createBlobUrl, revokeBlobUrl } from '../browser/blob-manager.js'
 
 class MSEPlayer {
   constructor (videoElement, options = {}) {
@@ -24,17 +25,26 @@ class MSEPlayer {
     ;(this.handlers.get(event) || []).forEach(handler => handler(value))
   }
 
-  async load (demuxResult) {
+  async load (demuxResult, loadOptions = {}) {
+    const signal = loadOptions.signal || this.options.signal
+    if (signal && signal.aborted) throw abortError()
     const support = getPlaybackSupport(demuxResult.tracks)
     if (!support.supported) throw new Error(support.reason)
     if (typeof MediaSource === 'undefined') throw new Error('MediaSource is not supported')
     const result = await remuxToMp4(demuxResult, this.options)
+    if (signal && signal.aborted) throw abortError()
     const source = new MediaSource()
     this.source = source
-    this.objectUrl = URL.createObjectURL(source)
+    this.objectUrl = createBlobUrl(source)
     this.video.src = this.objectUrl
     await new Promise((resolve, reject) => {
+      const onAbort = () => reject(abortError())
+      if (signal) signal.addEventListener('abort', onAbort, { once: true })
       source.addEventListener('sourceopen', () => {
+        if (signal && signal.aborted) {
+          reject(abortError())
+          return
+        }
         try {
           const codecs = []
           if (support.videoTrack) codecs.push(codecString(support.videoTrack))
@@ -46,6 +56,7 @@ class MSEPlayer {
         } catch (error) {
           reject(error)
         }
+        if (signal) signal.removeEventListener('abort', onAbort)
       }, { once: true })
       source.addEventListener('error', () => reject(new Error('MediaSource error')), { once: true })
     })
@@ -73,13 +84,19 @@ class MSEPlayer {
       this.buffer.removeEventListener('updateend', this.flush)
       if (this.source && this.source.readyState === 'open') this.source.endOfStream()
     }
-    if (this.objectUrl) URL.revokeObjectURL(this.objectUrl)
+    if (this.objectUrl) revokeBlobUrl(this.objectUrl)
     this.video.removeAttribute('src')
     this.video.load()
     this.queue = []
     this.buffer = null
     this.source = null
   }
+}
+
+function abortError () {
+  const error = new Error('MSE load aborted')
+  error.name = 'AbortError'
+  return error
 }
 
 function awaitBuffer (blob) {

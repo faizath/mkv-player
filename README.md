@@ -1,11 +1,22 @@
 # mkv.js
 
-Browser MKV demuxer and player library. The included demo extracts MKV subtitles and
-attachments directly in the browser: https://qgustavor.github.io/mkv-extract/
+mkv.js is a browser-first Matroska (MKV/WebM) demuxer, extractor, and player. It
+parses files locally, extracts subtitles and attachments, and plays compatible
+H.264/AAC tracks through Media Source Extensions without re-encoding.
 
-## Usage
+## Support
 
-Install from npm:
+| Content | Matroska codecs | Playback |
+| --- | --- | --- |
+| Video | H.264 (`V_MPEG4/ISO/AVC`) | Yes, MP4/MSE |
+| Audio | AAC (`A_AAC`) | Yes, MP4/MSE |
+| Audio | MP3 (`A_MPEG/L3`) | Browser-dependent |
+| Subtitles | SRT/UTF-8, ASS | WebVTT; ASS styling is text-only |
+
+HEVC, PGS/image subtitles, and other codecs can still be inspected or extracted
+where the demuxer supports their tracks, but are not playable by the MP4 muxer.
+
+## Installation
 
 ```sh
 npm install mkv.js
@@ -13,72 +24,60 @@ npm install mkv.js
 
 ```js
 import { demux, extractCues } from 'mkv.js'
-
 const result = await demux(arrayBuffer)
 const cues = extractCues(result, 1)
 ```
-
-## Browser playback
-
-The unified player API demuxes, remuxes, and attaches embedded SRT/ASS subtitle
-tracks (ASS styling is reduced to text-only WebVTT):
-
-```js
-import { createPlayer } from 'mkv.js/browser'
-const player = createPlayer(document.querySelector('video'))
-await player.load(file)
-```
-
-H.264 video and AAC audio can be remuxed without re-encoding and played through
-Media Source Extensions:
-
-```js
-import { demux, getPlaybackSupport, MSEPlayer } from 'mkv.js'
-
-const result = await demux(file, { collectMediaBlocks: true })
-const support = getPlaybackSupport(result.tracks)
-if (support.supported) await new MSEPlayer(videoElement).load(result)
-```
-
-The supported playback matrix is:
-
-| Track | Matroska codec | MP4/MSE codec |
-| --- | --- | --- |
-| Video | `V_MPEG4/ISO/AVC` | H.264 (`avc1`) |
-| Audio | `A_AAC` | AAC-LC (`mp4a`) |
-| Audio | `A_MPEG/L3` | MP3 (`mp4a` compatibility varies) |
-| Video | `V_AV1` | Detected, but not remuxed by the MP4 muxer |
-
-Pass `collectMediaBlocks: true` only when playback is needed; the default
-remains subtitle-only collection for backward compatibility.
 
 For a browser CDN build:
 
 ```html
 <script src="https://unpkg.com/mkv.js/mkv.js"></script>
 <script>
-  mkvjs.createPlayer(document.querySelector('video')).load(fileInput.files[0])
+  const player = mkvjs.createPlayer(document.querySelector('video'))
+  player.load(fileInput.files[0])
 </script>
 ```
 
-1. Open or drop a MKV file
-2. Wait a while...
-3. ???
-4. Profit!
+The live demo is in `dist/index.html`; it provides Player and Extract tabs.
 
-No downloads or uploads, no extensions, no plugins, no complicated things.
-Extract .ASS and .SRT subtitles and also any kind of attachment.
+## API
 
-*Build with:*
+- `demux(source, options)` returns `{ info, tracks, attachments, blocksByTrack }`.
+  Sources are `ArrayBuffer`, `Blob`/`File`, Web Streams, or Node readable
+  streams. Set `collectMediaBlocks: true` for playback. `signal` and
+  `onProgress` are supported.
+- `extractCues(result, trackNumber)` and `extractSubtitles(result)` extract
+  subtitle cues and files.
+- `extractAttachments(result)` returns embedded attachment files.
+- `createPlayer(video, options)` creates an `MKVPlayer`. Call `load(file)` and
+  `destroy()`. `useWorker: true` moves demuxing off the main thread.
+- `getPlaybackSupport(tracks)` reports whether tracks can be remuxed and played.
+- `remuxToMp4(result)` returns a `{ blob, mimeType }` MP4.
+- `MSEPlayer` can load an existing demux result directly.
 
-* [node-ebml](https://github.com/themasch/node-ebml), for MKV parsing;
-* [filereader-stream](https://github.com/maxogden/filereader-stream), for streaming files;
-* [progress-stream](https://github.com/freeall/progress-stream), for statistics;
-* [jszip](https://github.com/Stuk/jszip), because it's simpler downloading one file than a lot of files;
-* [filesaver.js](https://github.com/eligrey/FileSaver.js), because it's easy to use;
-* [tsup](https://tsup.egoist.dev/), for ESM, CommonJS, and IIFE bundles;
-* [gh-pages](https://github.com/tschaub/gh-pages), because it's pratical;
-* [standard](https://github.com/feross/standard), why not?
+The browser entry also exports `createWorkerClient()` and
+`registerMKVPlayerElement()`. The custom element can be used as
+`<mkv-player src="file.mkv"></mkv-player>` or assigned a `File` through its
+`file` property.
 
-Design based on [this pen](http://codepen.io/prasanjit/pen/NxjZMO)
-from [Prasanjit Singh](http://codepen.io/prasanjit/).
+## Browser and Node
+
+Use `mkv.js/browser` for browser playback, the worker client, and the custom
+element. The main `mkv.js` entry contains demuxing, extraction, and remuxing
+APIs and can be used in Node where the source is a compatible readable stream
+or `ArrayBuffer`. MSE, DOM subtitle tracks, and Web Workers require a browser.
+
+## Limitations and roadmap
+
+There is no HEVC playback, PGS support, ASS style rendering, or ffmpeg.wasm
+transcoding in this release. ffmpeg.wasm is future work and is intentionally
+not bundled.
+
+## Development
+
+```sh
+npm test
+npm run build
+```
+
+The project is MIT licensed.
