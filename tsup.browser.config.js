@@ -1,5 +1,5 @@
 export default {
-  external: ['@ffmpeg/ffmpeg', '@ffmpeg/util'],
+  external: ['@ffmpeg/ffmpeg', '@ffmpeg/util', 'akarisub', 'libbitsub'],
   esbuildOptions (options) {
     options.platform = 'browser'
     options.alias = {

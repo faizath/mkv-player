@@ -1,6 +1,6 @@
 {
   "name": "mkv.js",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "browser MKV demuxer and player library",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -59,7 +59,9 @@
   "devDependencies": {
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
+    "akarisub": "^1.1.3",
     "gh-pages": "^2.0.1",
+    "libbitsub": "^1.12.1",
     "standard": "^12.0.1",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
@@ -79,13 +81,21 @@
   },
   "peerDependencies": {
     "@ffmpeg/ffmpeg": "^0.12.10",
-    "@ffmpeg/util": "^0.12.1"
+    "@ffmpeg/util": "^0.12.1",
+    "akarisub": "^1.1.0",
+    "libbitsub": "^1.12.0"
   },
   "peerDependenciesMeta": {
     "@ffmpeg/ffmpeg": {
       "optional": true
     },
     "@ffmpeg/util": {
+      "optional": true
+    },
+    "akarisub": {
+      "optional": true
+    },
+    "libbitsub": {
       "optional": true
     }
   }

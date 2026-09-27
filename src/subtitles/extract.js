@@ -110,5 +110,13 @@ function bufferToString (value) {
   return value == null ? '' : Buffer.from(value).toString('utf8')
 }
 
-export { extractSubtitles, extractCues, detectFormat }
+export {
+  extractSubtitles,
+  extractCues,
+  detectFormat,
+  assData,
+  assDialogue,
+  assText,
+  assFormat
+}
 export default extractSubtitles

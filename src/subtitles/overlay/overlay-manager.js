@@ -45,30 +45,32 @@ class OverlayManager {
   }
 
   async attachFromDemux (demuxResult, options = {}) {
-    const merged = { ...this.options, ...options }
+    const merged = { ...this.options, ...options, demuxResult, canvas: this.canvas }
     const tracks = (demuxResult.tracks || []).filter(track => track.type === TRACK_TYPES.SUBTITLE)
     this._revokeEntries()
     const vttRenderer = new VttTrackRenderer()
     const entries = []
-    tracks.forEach((track, index) => {
+    for (let index = 0; index < tracks.length; index++) {
+      const track = tracks[index]
       const cues = extractCues(demuxResult, track.number)
       const blocks = getBlocks(demuxResult, track.number)
       const isBitmap = isBitmapSubtitleCodec(track.codecId)
       if (isBitmap) {
-        if (merged.bitmapSubtitles === false) return
+        if (merged.bitmapSubtitles === false) continue
         try {
-          entries.push(createPgsRenderer(merged).attach(this.video, track, cues, blocks, merged))
+          entries.push(await createPgsRenderer(merged).attach(this.video, track, cues, blocks, merged))
         } catch (error) {
           warnFallback(error, 'bitmap subtitle')
         }
-        return
+        continue
       }
-      if (isAss(track, cues) && merged.assRenderer === 'libass') {
+      const wantsLibass = merged.assRenderer === 'libass' || merged.assRenderer === 'auto'
+      if (isAss(track, cues) && wantsLibass) {
         try {
-          entries.push(createAssRenderer(merged).attach(this.video, track, cues, blocks, merged))
-          return
+          entries.push(await createAssRenderer(merged).attach(this.video, track, cues, blocks, merged))
+          continue
         } catch (error) {
-          warnFallback(error, 'ASS subtitle')
+          if (merged.assRenderer === 'libass') warnFallback(error, 'ASS subtitle')
         }
       }
       entries.push(vttRenderer.attach(this.video, demuxResult, track, {
@@ -76,7 +78,7 @@ class OverlayManager {
         cues,
         index
       }))
-    })
+    }
     this.entries = entries
     this._applyTrackSelection()
     return this
@@ -91,7 +93,9 @@ class OverlayManager {
     this.visible = Boolean(visible)
     if (this.canvas && this.canvas.style) this.canvas.style.display = this.visible ? '' : 'none'
     this.entries.forEach(entry => {
-      if (entry.element) entry.element.track.mode = this.visible ? 'hidden' : 'disabled'
+      if (entry.element && entry.element.track) {
+        entry.element.track.mode = this.visible ? 'hidden' : 'disabled'
+      }
     })
   }
 
