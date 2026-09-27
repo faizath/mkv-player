@@ -18,6 +18,31 @@ const result = await demux(arrayBuffer)
 const cues = extractCues(result, 1)
 ```
 
+## Browser playback
+
+H.264 video and AAC audio can be remuxed without re-encoding and played through
+Media Source Extensions:
+
+```js
+import { demux, getPlaybackSupport, MSEPlayer } from 'mkv.js'
+
+const result = await demux(file, { collectMediaBlocks: true })
+const support = getPlaybackSupport(result.tracks)
+if (support.supported) await new MSEPlayer(videoElement).load(result)
+```
+
+The supported playback matrix is:
+
+| Track | Matroska codec | MP4/MSE codec |
+| --- | --- | --- |
+| Video | `V_MPEG4/ISO/AVC` | H.264 (`avc1`) |
+| Audio | `A_AAC` | AAC-LC (`mp4a`) |
+| Audio | `A_MPEG/L3` | MP3 (`mp4a` compatibility varies) |
+| Video | `V_AV1` | Detected, but not remuxed by the MP4 muxer |
+
+Pass `collectMediaBlocks: true` only when playback is needed; the default
+remains subtitle-only collection for backward compatibility.
+
 For a browser CDN build:
 
 ```html

@@ -32,6 +32,7 @@ function demux (source, options) {
       stack: [],
       lastBlock: null
     }
+    state.collectMediaBlocks = Boolean(options.collectMediaBlocks)
     let progress
     let settled = false
 
@@ -87,7 +88,11 @@ function handleChunk (chunk, result, state) {
       const track = state.track
       result.tracks.push(track)
       state.trackByNumber[track.number] = track
-      if (track.type === TRACK_TYPES.SUBTITLE) result.blocksByTrack.set(track.number, [])
+      if (track.type === TRACK_TYPES.SUBTITLE ||
+        (state.collectMediaBlocks &&
+          (track.type === TRACK_TYPES.VIDEO || track.type === TRACK_TYPES.AUDIO))) {
+        result.blocksByTrack.set(track.number, [])
+      }
       state.track = null
     }
     if (tag.name === 'AttachedFile' && state.attachment && state.attachment.data) {
@@ -109,6 +114,10 @@ function handleChunk (chunk, result, state) {
     if (name === 'Language') state.track.language = stringValue(value)
     if (name === 'Name') state.track.name = stringValue(value)
     if (name === 'FlagDefault') state.track.default = Boolean(numberValue(value))
+    if (name === 'PixelWidth') state.track.width = numberValue(value)
+    if (name === 'PixelHeight') state.track.height = numberValue(value)
+    if (name === 'SamplingFrequency') state.track.samplingFrequency = Number(value)
+    if (name === 'Channels') state.track.channels = numberValue(value)
   }
   if (state.attachment) {
     if (name === 'FileName') state.attachment.name = stringValue(value)
@@ -121,7 +130,9 @@ function handleChunk (chunk, result, state) {
   if (name === 'Timecode') state.clusterTimecode = numberValue(value)
   if (name === 'BlockDuration' && state.lastBlock &&
     state.stack.indexOf('BlockGroup') !== -1) {
-    state.lastBlock.duration = toMilliseconds(numberValue(value), state.timecodeScale)
+    const duration = toMilliseconds(numberValue(value), state.timecodeScale)
+    state.lastBlock.duration = duration
+    if (state.lastBlock.durationMs !== undefined) state.lastBlock.durationMs = duration
   }
   if (name === 'SimpleBlock' || name === 'Block') addBlock(value, result, state)
 }
@@ -129,19 +140,26 @@ function handleChunk (chunk, result, state) {
 function addBlock (data, result, state) {
   const trackVint = readVint(data)
   const trackNumber = trackVint.value
-  if (!state.trackByNumber[trackNumber] ||
-    state.trackByNumber[trackNumber].type !== TRACK_TYPES.SUBTITLE) return
+  const track = state.trackByNumber[trackNumber]
+  if (!track || !result.blocksByTrack.has(trackNumber)) return
   const bytes = new Uint8Array(data)
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   const relativeTimecode = view.getInt16(trackVint.length)
   const flags = bytes[trackVint.length + 2]
-  const payload = data.slice(trackVint.length + 3)
+  const payload = new Uint8Array(data.slice(trackVint.length + 3))
+  const timestamp = toMilliseconds(state.clusterTimecode + relativeTimecode, state.timecodeScale)
+  const media = track.type === TRACK_TYPES.VIDEO || track.type === TRACK_TYPES.AUDIO
   const block = {
     trackNumber,
-    timecode: toMilliseconds(state.clusterTimecode + relativeTimecode, state.timecodeScale),
+    timecode: timestamp,
     duration: 0,
-    data: Buffer.from(payload).toString('utf8'),
+    data: media ? payload : Buffer.from(payload).toString('utf8'),
     keyframe: Boolean(flags & 0x80)
+  }
+  if (media) {
+    block.clusterTimecodeMs = toMilliseconds(state.clusterTimecode, state.timecodeScale)
+    block.blockTimestamp = timestamp
+    block.durationMs = 0
   }
   state.lastBlock = block
   result.blocksByTrack.get(trackNumber).push(block)

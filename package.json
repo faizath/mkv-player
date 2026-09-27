@@ -24,7 +24,7 @@
   "scripts": {
     "test": "standard && vitest run",
     "test:unit": "vitest run",
-    "build": "tsup --entry.index=src/index.js --entry.browser=src/browser/index.js --format esm,cjs --out-dir dist && tsup --config tsup.browser.config.js --entry.mkv=src/browser/index.js --format iife --global-name mkvjs --out-dir dist/iife && cp dist/iife/mkv.global.js mkv.js",
+    "build": "tsup --entry.index=src/index.js --entry.browser=src/browser/index.js --format esm,cjs --out-dir dist && tsup --config tsup.browser.config.js --entry.mkv=src/browser/index.js --format iife --global-name mkvjs --out-dir dist/iife && cp dist/iife/mkv.global.js mkv.js && mkdir -p dist/examples && cp examples/player.html dist/examples/player.html",
     "prepublishOnly": "npm run build",
     "deploy": "gh-pages -d dist"
   },

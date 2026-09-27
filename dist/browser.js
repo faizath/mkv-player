@@ -1,10 +1,13 @@
 import {
+  MSEPlayer,
   attachments_default,
   demuxer_default,
   extractCues,
   extract_default,
-  formatDuration
-} from "./chunk-C4Q5DF3A.js";
+  formatDuration,
+  getPlaybackSupport,
+  remuxToMp4
+} from "./chunk-HLEGZOA4.js";
 
 // src/extract/zip-export.js
 function exportZip(files, filename, JSZip, saveAs) {
@@ -89,9 +92,12 @@ if (typeof document !== "undefined" && document.querySelector(".file-drop-area")
   createExtractorUI();
 }
 export {
+  MSEPlayer,
   createExtractorUI,
   demuxer_default as demux,
   attachments_default as extractAttachments,
   extractCues,
-  extract_default as extractSubtitles
+  extract_default as extractSubtitles,
+  getPlaybackSupport,
+  remuxToMp4
 };

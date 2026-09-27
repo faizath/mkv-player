@@ -1456,10 +1456,10 @@ var mkvjs = (() => {
         return out;
       }
       function utf16leSlice(buf, start, end) {
-        const bytes = buf.slice(start, end);
+        const bytes2 = buf.slice(start, end);
         let res = "";
-        for (let i = 0; i < bytes.length - 1; i += 2) {
-          res += String.fromCharCode(bytes[i] + bytes[i + 1] * 256);
+        for (let i = 0; i < bytes2.length - 1; i += 2) {
+          res += String.fromCharCode(bytes2[i] + bytes2[i + 1] * 256);
         }
         return res;
       }
@@ -1982,13 +1982,13 @@ var mkvjs = (() => {
             this[i] = val;
           }
         } else {
-          const bytes = Buffer2.isBuffer(val) ? val : Buffer2.from(val, encoding);
-          const len = bytes.length;
+          const bytes2 = Buffer2.isBuffer(val) ? val : Buffer2.from(val, encoding);
+          const len = bytes2.length;
           if (len === 0) {
             throw new TypeError('The value "' + val + '" is invalid for argument "value"');
           }
           for (i = 0; i < end - start; ++i) {
-            this[i + start] = bytes[i % len];
+            this[i + start] = bytes2[i % len];
           }
         }
         return this;
@@ -2125,50 +2125,50 @@ var mkvjs = (() => {
         let codePoint;
         const length = string.length;
         let leadSurrogate = null;
-        const bytes = [];
+        const bytes2 = [];
         for (let i = 0; i < length; ++i) {
           codePoint = string.charCodeAt(i);
           if (codePoint > 55295 && codePoint < 57344) {
             if (!leadSurrogate) {
               if (codePoint > 56319) {
-                if ((units -= 3) > -1) bytes.push(239, 191, 189);
+                if ((units -= 3) > -1) bytes2.push(239, 191, 189);
                 continue;
               } else if (i + 1 === length) {
-                if ((units -= 3) > -1) bytes.push(239, 191, 189);
+                if ((units -= 3) > -1) bytes2.push(239, 191, 189);
                 continue;
               }
               leadSurrogate = codePoint;
               continue;
             }
             if (codePoint < 56320) {
-              if ((units -= 3) > -1) bytes.push(239, 191, 189);
+              if ((units -= 3) > -1) bytes2.push(239, 191, 189);
               leadSurrogate = codePoint;
               continue;
             }
             codePoint = (leadSurrogate - 55296 << 10 | codePoint - 56320) + 65536;
           } else if (leadSurrogate) {
-            if ((units -= 3) > -1) bytes.push(239, 191, 189);
+            if ((units -= 3) > -1) bytes2.push(239, 191, 189);
           }
           leadSurrogate = null;
           if (codePoint < 128) {
             if ((units -= 1) < 0) break;
-            bytes.push(codePoint);
+            bytes2.push(codePoint);
           } else if (codePoint < 2048) {
             if ((units -= 2) < 0) break;
-            bytes.push(
+            bytes2.push(
               codePoint >> 6 | 192,
               codePoint & 63 | 128
             );
           } else if (codePoint < 65536) {
             if ((units -= 3) < 0) break;
-            bytes.push(
+            bytes2.push(
               codePoint >> 12 | 224,
               codePoint >> 6 & 63 | 128,
               codePoint & 63 | 128
             );
           } else if (codePoint < 1114112) {
             if ((units -= 4) < 0) break;
-            bytes.push(
+            bytes2.push(
               codePoint >> 18 | 240,
               codePoint >> 12 & 63 | 128,
               codePoint >> 6 & 63 | 128,
@@ -2178,7 +2178,7 @@ var mkvjs = (() => {
             throw new Error("Invalid code point");
           }
         }
-        return bytes;
+        return bytes2;
       }
       function asciiToBytes(str) {
         const byteArray = [];
@@ -12189,7 +12189,7 @@ var mkvjs = (() => {
           this.length += reps[i].length;
         }
         var removed = new Buffers();
-        var bytes = 0;
+        var bytes2 = 0;
         var startBytes = 0;
         for (var ii = 0; ii < buffers.length && startBytes + buffers[ii].length < index; ii++) {
           startBytes += buffers[ii].length;
@@ -12481,11 +12481,14 @@ var mkvjs = (() => {
   // src/browser/index.js
   var browser_exports = {};
   __export(browser_exports, {
+    MSEPlayer: () => MSEPlayer,
     createExtractorUI: () => createExtractorUI,
     demux: () => demuxer_default,
     extractAttachments: () => attachments_default,
     extractCues: () => extractCues,
-    extractSubtitles: () => extract_default
+    extractSubtitles: () => extract_default,
+    getPlaybackSupport: () => getPlaybackSupport,
+    remuxToMp4: () => remuxToMp4
   });
 
   // src/core/demuxer.js
@@ -12556,6 +12559,7 @@ var mkvjs = (() => {
         stack: [],
         lastBlock: null
       };
+      state.collectMediaBlocks = Boolean(options.collectMediaBlocks);
       let progress;
       let settled = false;
       const fail = (error) => {
@@ -12606,7 +12610,9 @@ var mkvjs = (() => {
         const track = state.track;
         result.tracks.push(track);
         state.trackByNumber[track.number] = track;
-        if (track.type === TRACK_TYPES.SUBTITLE) result.blocksByTrack.set(track.number, []);
+        if (track.type === TRACK_TYPES.SUBTITLE || state.collectMediaBlocks && (track.type === TRACK_TYPES.VIDEO || track.type === TRACK_TYPES.AUDIO)) {
+          result.blocksByTrack.set(track.number, []);
+        }
         state.track = null;
       }
       if (tag.name === "AttachedFile" && state.attachment && state.attachment.data) {
@@ -12627,6 +12633,10 @@ var mkvjs = (() => {
       if (name === "Language") state.track.language = stringValue(value);
       if (name === "Name") state.track.name = stringValue(value);
       if (name === "FlagDefault") state.track.default = Boolean(numberValue(value));
+      if (name === "PixelWidth") state.track.width = numberValue(value);
+      if (name === "PixelHeight") state.track.height = numberValue(value);
+      if (name === "SamplingFrequency") state.track.samplingFrequency = Number(value);
+      if (name === "Channels") state.track.channels = numberValue(value);
     }
     if (state.attachment) {
       if (name === "FileName") state.attachment.name = stringValue(value);
@@ -12638,26 +12648,36 @@ var mkvjs = (() => {
     if (name === "TimecodeScale") state.timecodeScale = numberValue(value);
     if (name === "Timecode") state.clusterTimecode = numberValue(value);
     if (name === "BlockDuration" && state.lastBlock && state.stack.indexOf("BlockGroup") !== -1) {
-      state.lastBlock.duration = toMilliseconds(numberValue(value), state.timecodeScale);
+      const duration = toMilliseconds(numberValue(value), state.timecodeScale);
+      state.lastBlock.duration = duration;
+      if (state.lastBlock.durationMs !== void 0) state.lastBlock.durationMs = duration;
     }
     if (name === "SimpleBlock" || name === "Block") addBlock(value, result, state);
   }
   function addBlock(data, result, state) {
     const trackVint = readVint(data);
     const trackNumber = trackVint.value;
-    if (!state.trackByNumber[trackNumber] || state.trackByNumber[trackNumber].type !== TRACK_TYPES.SUBTITLE) return;
-    const bytes = new Uint8Array(data);
-    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const track = state.trackByNumber[trackNumber];
+    if (!track || !result.blocksByTrack.has(trackNumber)) return;
+    const bytes2 = new Uint8Array(data);
+    const view = new DataView(bytes2.buffer, bytes2.byteOffset, bytes2.byteLength);
     const relativeTimecode = view.getInt16(trackVint.length);
-    const flags = bytes[trackVint.length + 2];
-    const payload = data.slice(trackVint.length + 3);
+    const flags = bytes2[trackVint.length + 2];
+    const payload = new Uint8Array(data.slice(trackVint.length + 3));
+    const timestamp = toMilliseconds(state.clusterTimecode + relativeTimecode, state.timecodeScale);
+    const media = track.type === TRACK_TYPES.VIDEO || track.type === TRACK_TYPES.AUDIO;
     const block = {
       trackNumber,
-      timecode: toMilliseconds(state.clusterTimecode + relativeTimecode, state.timecodeScale),
+      timecode: timestamp,
       duration: 0,
-      data: Buffer.from(payload).toString("utf8"),
+      data: media ? payload : Buffer.from(payload).toString("utf8"),
       keyframe: Boolean(flags & 128)
     };
+    if (media) {
+      block.clusterTimecodeMs = toMilliseconds(state.clusterTimecode, state.timecodeScale);
+      block.blockTimestamp = timestamp;
+      block.durationMs = 0;
+    }
     state.lastBlock = block;
     result.blocksByTrack.get(trackNumber).push(block);
   }
@@ -12786,9 +12806,9 @@ var mkvjs = (() => {
     if (!header) return lines.join("\r\n") + (lines.length ? "\r\n" : "");
     return header + (header.endsWith("\n") ? "" : "\r\n") + lines.join("\r\n") + (lines.length ? "\r\n" : "");
   }
-  function assDialogue(cue, codecPrivate, data) {
+  function assDialogue(cue, codecPrivate2, data) {
     const fields = data.split(",");
-    const format = assFormat(codecPrivate);
+    const format = assFormat(codecPrivate2);
     const start = format.indexOf("start");
     const end = format.indexOf("end");
     if (start !== -1 && end !== -1) {
@@ -12802,14 +12822,14 @@ var mkvjs = (() => {
       formatTimestamp(cue.endMs)
     ].concat(fields.slice(1)).join(",");
   }
-  function assText(data, codecPrivate) {
+  function assText(data, codecPrivate2) {
     const fields = data.split(",");
-    const format = assFormat(codecPrivate);
+    const format = assFormat(codecPrivate2);
     const textIndex = format.indexOf("text");
     return textIndex === -1 ? fields[fields.length - 1] : fields.slice(textIndex).join(",");
   }
-  function assFormat(codecPrivate) {
-    const match = bufferToString(codecPrivate).match(/^\s*Format:\s*([^\r\n]*)/im);
+  function assFormat(codecPrivate2) {
+    const match = bufferToString(codecPrivate2).match(/^\s*Format:\s*([^\r\n]*)/im);
     return match ? match[1].split(",").map((field) => field.trim().toLowerCase()) : [];
   }
   function srtData(cues) {
@@ -12828,6 +12848,573 @@ var mkvjs = (() => {
     }));
   }
   var attachments_default = extractAttachments;
+
+  // src/playback/codecs.js
+  function isWebSafeVideo(codecId) {
+    return codecId === CODEC_IDS.V_MPEG4_ISO_AVC || codecId === "V_AV1";
+  }
+  function isWebSafeAudio(codecId) {
+    return codecId === CODEC_IDS.A_AAC || codecId === CODEC_IDS.A_MPEG_L3;
+  }
+  function getPlaybackSupport(tracks) {
+    const videoTrack = tracks.find((track) => track.type === TRACK_TYPES.VIDEO);
+    const audioTrack = tracks.find((track) => track.type === TRACK_TYPES.AUDIO);
+    const reasons = [];
+    if (!videoTrack && !audioTrack) reasons.push("No video or audio tracks found");
+    if (videoTrack && !isWebSafeVideo(videoTrack.codecId)) {
+      reasons.push(`Unsupported video codec: ${videoTrack.codecId || "unknown"}`);
+    }
+    if (audioTrack && !isWebSafeAudio(audioTrack.codecId)) {
+      reasons.push(`Unsupported audio codec: ${audioTrack.codecId || "unknown"}`);
+    }
+    return {
+      supported: reasons.length === 0 && Boolean(videoTrack || audioTrack),
+      videoTrack,
+      audioTrack,
+      ...reasons.length ? { reason: reasons.join("; ") } : {}
+    };
+  }
+
+  // src/playback/remux.js
+  var encoder = new TextEncoder();
+  function bytes(...parts) {
+    const length = parts.reduce((total, part) => total + part.length, 0);
+    const output = new Uint8Array(length);
+    let offset = 0;
+    parts.forEach((part) => {
+      output.set(part, offset);
+      offset += part.length;
+    });
+    return output;
+  }
+  function u32(value) {
+    const output = new Uint8Array(4);
+    new DataView(output.buffer).setUint32(0, value >>> 0);
+    return output;
+  }
+  function i32(value) {
+    const output = new Uint8Array(4);
+    new DataView(output.buffer).setInt32(0, value);
+    return output;
+  }
+  function u16(value) {
+    const output = new Uint8Array(2);
+    new DataView(output.buffer).setUint16(0, value);
+    return output;
+  }
+  function box(type, ...contents) {
+    const body = bytes(...contents);
+    return bytes(u32(body.length + 8), encoder.encode(type), body);
+  }
+  function fullBox(type, version, flags, ...contents) {
+    return box(type, bytes(new Uint8Array([version]), new Uint8Array([
+      flags >>> 16 & 255,
+      flags >>> 8 & 255,
+      flags & 255
+    ]), ...contents));
+  }
+  function codecPrivate(track) {
+    return track.codecPrivate instanceof Uint8Array ? track.codecPrivate : track.codecPrivate ? new Uint8Array(track.codecPrivate) : new Uint8Array(0);
+  }
+  function avcConfig(track) {
+    const privateData = codecPrivate(track);
+    if (privateData.length >= 7 && privateData[0] === 1) return privateData;
+    const sps = findNal(privateData, 7);
+    const pps = findNal(privateData, 8);
+    if (!sps || !pps) {
+      return new Uint8Array([1, 66, 0, 30, 255, 225, 0, 0, 1, 0, 0, 0, 1, 0]);
+    }
+    return bytes(
+      new Uint8Array([1, sps[1] || 66, sps[2] || 0, sps[3] || 30, 255, 225]),
+      u16(sps.length),
+      sps,
+      new Uint8Array([1]),
+      u16(pps.length),
+      pps
+    );
+  }
+  function findNal(data, type) {
+    let start = 0;
+    while (start + 4 < data.length) {
+      if (data[start] === 0 && data[start + 1] === 0 && (data[start + 2] === 1 || data[start + 2] === 0 && data[start + 3] === 1)) {
+        const header = data[start + 2] === 1 ? start + 3 : start + 4;
+        const end = nextStart(data, header);
+        if ((data[header] & 31) === type) return data.slice(header, end);
+        start = end;
+      } else start++;
+    }
+    return null;
+  }
+  function nextStart(data, start) {
+    for (let i = start; i + 3 < data.length; i++) {
+      if (data[i] === 0 && data[i + 1] === 0 && (data[i + 2] === 1 || data[i + 2] === 0 && data[i + 3] === 1)) return i;
+    }
+    return data.length;
+  }
+  function h264Sample(data) {
+    const input = data instanceof Uint8Array ? data : new Uint8Array(data);
+    const output = [];
+    let offset = 0;
+    while (offset + 4 <= input.length) {
+      const length = new DataView(input.buffer, input.byteOffset + offset, 4).getUint32(0);
+      if (length === 0 || offset + 4 + length > input.length) break;
+      output.push(input.slice(offset, offset + 4 + length));
+      offset += 4 + length;
+    }
+    if (output.length && offset === input.length) return bytes(...output);
+    const nals = [];
+    let start = 0;
+    while (start < input.length) {
+      const marker = startCode(input, start);
+      if (marker < 0) break;
+      const nalStart = marker + (input[marker + 2] === 1 ? 3 : 4);
+      const nalEnd = nextStart(input, nalStart);
+      if (nalEnd > nalStart) nals.push(bytes(u32(nalEnd - nalStart), input.slice(nalStart, nalEnd)));
+      start = nalEnd;
+    }
+    return nals.length ? bytes(...nals) : input;
+  }
+  function startCode(data, from) {
+    for (let i = from; i + 3 < data.length; i++) {
+      if (data[i] === 0 && data[i + 1] === 0 && (data[i + 2] === 1 || data[i + 2] === 0 && data[i + 3] === 1)) return i;
+    }
+    return -1;
+  }
+  function audioSample(data, track) {
+    const input = data instanceof Uint8Array ? data : new Uint8Array(data);
+    if (track.codecId === CODEC_IDS.A_AAC && input.length > 7 && input[0] === 255 && (input[1] & 240) === 240) {
+      const protection = input[1] & 1;
+      const length = (input[3] & 3) << 11 | input[4] << 3 | input[5] >> 5;
+      return input.slice(7 + (protection ? 0 : 2), length);
+    }
+    return input;
+  }
+  function visualSampleEntry(track) {
+    const width = track.width || 1920;
+    const height = track.height || 1080;
+    const compressor = new Uint8Array(32);
+    const config = box("avcC", avcConfig(track));
+    const data = bytes(
+      new Uint8Array(6),
+      u16(1),
+      new Uint8Array(16),
+      u16(width),
+      u16(height),
+      u32(4718592),
+      u32(4718592),
+      new Uint8Array(4),
+      new Uint8Array([0, 0]),
+      compressor,
+      u16(24),
+      u16(65535),
+      config
+    );
+    return box("avc1", data);
+  }
+  function audioSampleEntry(track) {
+    const config = codecPrivate(track);
+    const esds = fullBox("esds", 0, 0, bytes(
+      new Uint8Array([
+        3,
+        25,
+        0,
+        0,
+        0,
+        4,
+        17,
+        64,
+        21,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        5,
+        config.length
+      ]),
+      config,
+      new Uint8Array([6, 1, 2])
+    ));
+    const rate = track.samplingFrequency || 48e3;
+    return box("mp4a", bytes(
+      new Uint8Array(6),
+      u16(1),
+      new Uint8Array(8),
+      u16(track.channels || 2),
+      u16(16),
+      u16(0),
+      u16(0),
+      u32(rate << 16),
+      esds
+    ));
+  }
+  function trackBox(track, id) {
+    const video = track.type === TRACK_TYPES.VIDEO;
+    const handler = video ? "vide" : "soun";
+    const sampleEntry = video ? visualSampleEntry(track) : audioSampleEntry(track);
+    const stbl = box(
+      "stbl",
+      box("stsd", bytes(new Uint8Array([0, 0, 0, 0]), u32(1), sampleEntry)),
+      box("stts", new Uint8Array(8)),
+      box("stsc", new Uint8Array(8)),
+      box("stsz", new Uint8Array(12)),
+      box("stco", new Uint8Array(8))
+    );
+    const minf = box(
+      "minf",
+      video ? box("vmhd", new Uint8Array(8)) : box("smhd", new Uint8Array(4)),
+      box("dinf", box("dref", bytes(new Uint8Array(4), u32(1), box("url ", new Uint8Array([0, 0, 0, 1]))))),
+      stbl
+    );
+    const tkhd = fullBox(
+      "tkhd",
+      0,
+      7,
+      new Uint8Array(16),
+      u32(id),
+      new Uint8Array(8),
+      u16(0),
+      new Uint8Array(2),
+      new Uint8Array(8),
+      u32(65536),
+      new Uint8Array(8),
+      u32(video ? (track.width || 1920) << 16 : 0),
+      u32(video ? (track.height || 1080) << 16 : 0)
+    );
+    const mdhd = fullBox("mdhd", 0, 0, new Uint8Array(8), u32(1e3), u32(0), u16(21956), u16(0));
+    const hdlr = fullBox(
+      "hdlr",
+      0,
+      0,
+      new Uint8Array(4),
+      encoder.encode(handler),
+      new Uint8Array(12),
+      encoder.encode(video ? "VideoHandler\0" : "SoundHandler\0")
+    );
+    return box("trak", tkhd, box("mdia", mdhd, hdlr, minf));
+  }
+  async function createInitSegment(tracks) {
+    const selected = tracks.filter((track) => track.type === TRACK_TYPES.VIDEO || track.type === TRACK_TYPES.AUDIO);
+    const mvhd = fullBox(
+      "mvhd",
+      0,
+      0,
+      new Uint8Array(8),
+      u32(1e3),
+      u32(0),
+      u32(65536),
+      u16(256),
+      new Uint8Array(10),
+      new Uint8Array([
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        2
+      ])
+    );
+    const trex = selected.map((track, index) => fullBox(
+      "trex",
+      0,
+      0,
+      u32(index + 1),
+      u32(1),
+      u32(0),
+      u32(0),
+      u32(0),
+      u32(0)
+    ));
+    return bytes(box("ftyp", bytes(
+      encoder.encode("isom"),
+      new Uint8Array([0, 0, 2, 0]),
+      encoder.encode("isomiso6avc1mp41")
+    )), box(
+      "moov",
+      mvhd,
+      ...selected.map((track, index) => trackBox(track, index + 1)),
+      box("mvex", ...trex)
+    ));
+  }
+  async function createMediaSegment(blocks, sequenceNumber = 1) {
+    const grouped = /* @__PURE__ */ new Map();
+    blocks.forEach((block) => {
+      if (!grouped.has(block.trackNumber)) grouped.set(block.trackNumber, []);
+      grouped.get(block.trackNumber).push(block);
+    });
+    const samples = [];
+    grouped.forEach((trackBlocks, trackNumber) => {
+      trackBlocks.forEach((block, index) => {
+        const data = block.trackType === TRACK_TYPES.AUDIO ? audioSample(block.data, block.track) : h264Sample(block.data);
+        samples.push({ trackNumber, block, data, duration: Math.max(1, Math.round(block.durationMs || block.duration || 33)), index });
+      });
+    });
+    samples.sort((a, b) => (a.block.blockTimestamp || a.block.timecode || 0) - (b.block.blockTimestamp || b.block.timecode || 0));
+    const trackSamplesByNumber = /* @__PURE__ */ new Map();
+    grouped.forEach((trackBlocks, trackNumber) => {
+      trackSamplesByNumber.set(trackNumber, samples.filter((sample) => sample.trackNumber === trackNumber));
+    });
+    const payload = bytes(...Array.from(trackSamplesByNumber.values()).flat().map((sample) => sample.data));
+    function makeMoof(dataOffset) {
+      const trafs = [];
+      grouped.forEach((trackBlocks, trackNumber) => {
+        const trackSamples = trackSamplesByNumber.get(trackNumber);
+        const entries = trackSamples.map((sample) => bytes(
+          u32(sample.duration),
+          u32(sample.data.length),
+          u32(sample.block.keyframe ? 33554432 : 16842752)
+        ));
+        const trun = fullBox("trun", 0, 1793, u32(trackSamples.length), i32(dataOffset), ...entries);
+        const tfhd = fullBox("tfhd", 0, 131072, u32(trackNumber));
+        const timestamp = Math.round(trackBlocks[0].blockTimestamp || trackBlocks[0].timecode || 0);
+        const tfdt = fullBox("tfdt", 0, 0, u32(Math.max(0, timestamp)));
+        trafs.push(box("traf", tfhd, tfdt, trun));
+      });
+      return box("moof", fullBox("mfhd", 0, 0, u32(sequenceNumber)), ...trafs);
+    }
+    let moof = makeMoof(0);
+    moof = makeMoof(moof.length + 8);
+    return bytes(moof, box("mdat", payload));
+  }
+  async function remuxToMp4(demuxResult, options = {}) {
+    const support = getPlaybackSupport(demuxResult.tracks);
+    if (!support.supported) throw new Error(support.reason);
+    const tracks = [support.videoTrack, support.audioTrack].filter(Boolean);
+    const blocks = [];
+    tracks.forEach((track) => {
+      ;
+      (demuxResult.blocksByTrack.get(track.number) || []).forEach((block) => {
+        blocks.push({ ...block, trackType: track.type, track });
+      });
+    });
+    const init = await createInitSegment(tracks);
+    const media = await createMediaSegment(blocks, options.sequenceNumber || 1);
+    return { blob: new Blob([init, media], { type: "video/mp4" }), mimeType: "video/mp4" };
+  }
+
+  // src/playback/mse-player.js
+  var MSEPlayer = class {
+    constructor(videoElement, options = {}) {
+      if (!videoElement) throw new TypeError("MSEPlayer requires a video element");
+      this.video = videoElement;
+      this.options = options;
+      this.handlers = /* @__PURE__ */ new Map();
+      this.source = null;
+      this.buffer = null;
+      this.queue = [];
+      this.objectUrl = null;
+    }
+    on(event, handler) {
+      if (!this.handlers.has(event)) this.handlers.set(event, []);
+      this.handlers.get(event).push(handler);
+      return () => this.handlers.get(event).splice(this.handlers.get(event).indexOf(handler), 1);
+    }
+    emit(event, value) {
+      ;
+      (this.handlers.get(event) || []).forEach((handler) => handler(value));
+    }
+    async load(demuxResult) {
+      const support = getPlaybackSupport(demuxResult.tracks);
+      if (!support.supported) throw new Error(support.reason);
+      if (typeof MediaSource === "undefined") throw new Error("MediaSource is not supported");
+      const result = await remuxToMp4(demuxResult, this.options);
+      const source = new MediaSource();
+      this.source = source;
+      this.objectUrl = URL.createObjectURL(source);
+      this.video.src = this.objectUrl;
+      await new Promise((resolve, reject) => {
+        source.addEventListener("sourceopen", () => {
+          try {
+            const codecs = [];
+            if (support.videoTrack) codecs.push(codecString(support.videoTrack));
+            if (support.audioTrack) codecs.push(codecString(support.audioTrack));
+            this.buffer = source.addSourceBuffer(`video/mp4; codecs="${codecs.join(", ")}"`);
+            this.buffer.addEventListener("updateend", () => this.flush(resolve));
+            this.queue.push(awaitBuffer(result.blob));
+            this.flush(resolve);
+          } catch (error) {
+            reject(error);
+          }
+        }, { once: true });
+        source.addEventListener("error", () => reject(new Error("MediaSource error")), { once: true });
+      });
+      this.emit("ready");
+      return this;
+    }
+    flush(resolve) {
+      if (!this.buffer || this.buffer.updating || !this.queue.length) return;
+      const next = this.queue.shift();
+      if (next && typeof next.then === "function") {
+        next.then((data) => {
+          this.buffer.appendBuffer(data);
+          if (resolve) resolve();
+        });
+      } else {
+        this.buffer.appendBuffer(next);
+        if (resolve) resolve();
+      }
+      this.emit("progress");
+    }
+    destroy() {
+      if (this.buffer) {
+        this.buffer.removeEventListener("updateend", this.flush);
+        if (this.source && this.source.readyState === "open") this.source.endOfStream();
+      }
+      if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
+      this.video.removeAttribute("src");
+      this.video.load();
+      this.queue = [];
+      this.buffer = null;
+      this.source = null;
+    }
+  };
+  function awaitBuffer(blob) {
+    return blob.arrayBuffer().then((buffer) => new Uint8Array(buffer));
+  }
+  function codecString(track) {
+    if (track.type === 1) {
+      const data = track.codecPrivate instanceof Uint8Array ? track.codecPrivate : new Uint8Array(track.codecPrivate || []);
+      if (data[0] === 1 && data.length >= 4) {
+        return `avc1.${Array.from(data.slice(1, 4)).map((byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase()}`;
+      }
+      return "avc1.42E01E";
+    }
+    const config = track.codecPrivate instanceof Uint8Array ? track.codecPrivate : new Uint8Array(track.codecPrivate || []);
+    const objectType = config.length ? config[0] >> 3 : 2;
+    return `mp4a.40.${objectType}`;
+  }
 
   // src/extract/zip-export.js
   function exportZip(files, filename, JSZip, saveAs) {

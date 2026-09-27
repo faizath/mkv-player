@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>mkv.js MSE player</title>
+<input id="file" type="file" accept=".mkv,.webm,video/x-matroska">
+<p id="status"></p>
+<video id="video" controls></video>
+<script type="module">
+  import { demux, getPlaybackSupport, MSEPlayer } from '../dist/browser.js'
+
+  const status = document.querySelector('#status')
+  const video = document.querySelector('#video')
+  let player
+  document.querySelector('#file').addEventListener('change', async event => {
+    const file = event.target.files[0]
+    if (!file) return
+    try {
+      status.textContent = 'Reading MKV...'
+      const result = await demux(file, { collectMediaBlocks: true })
+      const support = getPlaybackSupport(result.tracks)
+      if (!support.supported) throw new Error(support.reason)
+      if (player) player.destroy()
+      player = new MSEPlayer(video)
+      await player.load(result)
+      status.textContent = 'Ready'
+    } catch (error) {
+      status.textContent = `Playback error: ${error.message}`
+    }
+  })
+</script>
