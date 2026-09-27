@@ -7,4 +7,4 @@ function exportZip (files, filename, JSZip, saveAs) {
   return zip.generateAsync({ type: 'blob' }).then(content => saveAs(content, filename))
 }
 
-module.exports = exportZip
+export default exportZip

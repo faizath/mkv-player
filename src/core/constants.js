@@ -25,4 +25,4 @@ const CODEC_IDS = {
   S_TEXT_WEBVTT: 'S_TEXT/WEBVTT'
 }
 
-module.exports = { TRACK_TYPES, CODEC_IDS }
+export { TRACK_TYPES, CODEC_IDS }

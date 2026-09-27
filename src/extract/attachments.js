@@ -5,5 +5,5 @@ function extractAttachments (result) {
   }))
 }
 
-module.exports = extractAttachments
-module.exports.extractAttachments = extractAttachments
+export { extractAttachments }
+export default extractAttachments

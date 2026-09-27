@@ -1,5 +1,5 @@
-const { TRACK_TYPES, CODEC_IDS } = require('../core/constants')
-const { formatTimestamp, formatTimestampSRT } = require('./format')
+import { TRACK_TYPES, CODEC_IDS } from '../core/constants.js'
+import { formatTimestamp, formatTimestampSRT } from './format.js'
 
 const DEFAULT_DURATION = 2000
 
@@ -101,6 +101,5 @@ function bufferToString (value) {
   return value == null ? '' : Buffer.from(value).toString('utf8')
 }
 
-module.exports = extractSubtitles
-module.exports.extractSubtitles = extractSubtitles
-module.exports.extractCues = extractCues
+export { extractSubtitles, extractCues }
+export default extractSubtitles

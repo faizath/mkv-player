@@ -1,6 +1,5 @@
-const demux = require('./core/demuxer')
-const extractSubtitles = require('./subtitles/extract')
-const { extractCues } = extractSubtitles
-const extractAttachments = require('./extract/attachments')
+import demux from './core/demuxer.js'
+import extractSubtitles, { extractCues } from './subtitles/extract.js'
+import extractAttachments from './extract/attachments.js'
 
-module.exports = { demux, extractSubtitles, extractCues, extractAttachments }
+export { demux, extractSubtitles, extractCues, extractAttachments }

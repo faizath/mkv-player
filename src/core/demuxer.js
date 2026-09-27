@@ -1,9 +1,9 @@
 /* global Blob */
-const fileReaderStream = require('filereader-stream')
-const progressStream = require('progress-stream')
-const Readable = require('stream').Readable
-const { TRACK_TYPES } = require('./constants')
-const { createDecoder, readVint } = require('./ebml-reader')
+import fileReaderStream from 'filereader-stream'
+import progressStream from 'progress-stream'
+import { Readable } from 'stream'
+import { TRACK_TYPES } from './constants.js'
+import { createDecoder, readVint } from './ebml-reader.js'
 
 function demux (source, options) {
   options = options || {}
@@ -198,5 +198,5 @@ function abortError () {
   return error
 }
 
-module.exports = demux
-module.exports.demux = demux
+export { demux }
+export default demux

@@ -29,4 +29,4 @@ function formatDuration (duration) {
   return Math.floor(duration / 3600) + ' hours'
 }
 
-module.exports = { formatTimestamp, formatTimestampSRT, formatDuration }
+export { formatTimestamp, formatTimestampSRT, formatDuration }

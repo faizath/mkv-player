@@ -1,4 +1,4 @@
-const ebml = require('ebml')
+import ebml from 'ebml'
 
 function createDecoder () {
   return new ebml.Decoder()
@@ -8,4 +8,4 @@ function readVint (data) {
   return ebml.tools.readVint(data)
 }
 
-module.exports = { createDecoder, readVint }
+export { createDecoder, readVint }
