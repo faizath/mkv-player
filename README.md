@@ -1,6 +1,6 @@
-# mkv-js
+# mkv-player
 
-mkv.js is a browser-first Matroska (MKV/WebM) demuxer, extractor, and player. It
+mkv-player is a browser-first Matroska (MKV/WebM) demuxer, extractor, and player. It
 parses files locally, extracts subtitles and attachments, and plays compatible
 tracks through Media Source Extensions without re-encoding when possible.
 
@@ -22,7 +22,7 @@ Enable ffmpeg.wasm transcode for unsupported audio/video when remuxing is not en
 ## Installation
 
 ```sh
-npm install mkv-js
+npm install mkv-player
 ```
 
 Optional peer dependencies:
@@ -34,7 +34,7 @@ npm install libbitsub                     # PGS/bitmap subtitles
 ```
 
 ```js
-import { demux, extractCues, createPlayer } from 'mkv-js'
+import { demux, extractCues, createPlayer } from 'mkv-player'
 
 const result = await demux(arrayBuffer)
 const cues = extractCues(result, 1)
@@ -50,7 +50,7 @@ await player.load(file)
 For a browser CDN build:
 
 ```html
-<script src="https://unpkg.com/mkv-js/mkv.js"></script>
+<script src="https://unpkg.com/mkv-player/mkv.js"></script>
 <script>
   const player = mkvjs.createPlayer(document.querySelector('video'), {
     assRenderer: 'text'
@@ -107,8 +107,8 @@ The browser entry also exports `createWorkerClient()` and
 
 ## Browser and Node
 
-Use `mkv-js/browser` for browser playback, the worker client, and the custom
-element. The main `mkv-js` entry contains demuxing, extraction, and remuxing
+Use `mkv-player/browser` for browser playback, the worker client, and the custom
+element. The main `mkv-player` entry contains demuxing, extraction, and remuxing
 APIs and can be used in Node where the source is a compatible readable stream
 or `ArrayBuffer`. MSE, DOM subtitle tracks, and Web Workers require a browser.
 
