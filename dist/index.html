@@ -1,16 +1,16 @@
 <!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>mkv.js — browser MKV tools</title>
+<title>mkv-player — browser MKV tools</title>
 <link rel="stylesheet" href="main.css">
 <main class="shell">
-  <header><p class="eyebrow">mkv.js</p><h1>MKV tools that run in your browser.</h1>
+  <header><p class="eyebrow">mkv-player</p><h1>MKV tools that run in your browser.</h1>
     <p>Play compatible H.264/AAC media or extract subtitles and attachments. Files stay local.</p></header>
   <nav class="tabs"><button class="tab active" data-tab="player">Player</button><button class="tab" data-tab="extract">Extract</button></nav>
   <section id="player" class="panel active"><input id="player-file" type="file" accept=".mkv,.webm,video/x-matroska"><p id="player-status">Choose an MKV file to begin.</p><video id="video" controls></video></section>
   <section id="extract" class="panel"><div class="file-drop-area"><span class="fake-btn">Choose files</span><span class="file-msg">or drag and drop files here</span><input class="file-input" type="file" multiple></div><p class="file-msg-status"></p></section>
-  <footer><a href="https://github.com/qgustavor/mkv.js">GitHub</a> · <a href="https://www.npmjs.com/package/mkv-js">npm</a>
-    <code>npm install mkv-js</code><code>&lt;script src="https://unpkg.com/mkv-js/mkv.js"&gt;&lt;/script&gt;</code></footer>
+  <footer><a href="https://github.com/qgustavor/mkv-player">GitHub</a> · <a href="https://www.npmjs.com/package/mkv-player">npm</a>
+    <code>npm install mkv-player</code><code>&lt;script src="https://unpkg.com/mkv-player/mkv.js"&gt;&lt;/script&gt;</code></footer>
 </main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.3/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/1.3.3/FileSaver.min.js"></script>
