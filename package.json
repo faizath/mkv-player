@@ -1,5 +1,5 @@
 {
-  "name": "mkv-js",
+  "name": "mkv-player",
   "version": "2.2.0",
   "description": "browser MKV demuxer and player library",
   "type": "module",
